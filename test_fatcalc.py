@@ -104,6 +104,42 @@ class TestFATPartition(unittest.TestCase):
         # Secteur 528 (premier data sector) = 270336 octets
         self.assertEqual(self.partition.get_sector_offset(528), 270336)
 
+    def test_fat_entry_offset_fat1(self):
+        """Vérifie le calcul de l'offset d'une entrée dans FAT1."""
+        # FAT1 commence à : 4 secteurs réservés * 512 = 2048 octets
+        # Cluster 0 dans FAT1 : 2048 + (0 * 2) = 2048
+        self.assertEqual(self.partition.get_fat_entry_offset(0, 1), 2048)
+        # Cluster 2 dans FAT1 : 2048 + (2 * 2) = 2052
+        self.assertEqual(self.partition.get_fat_entry_offset(2, 1), 2052)
+        # Cluster 10 dans FAT1 : 2048 + (10 * 2) = 2068
+        self.assertEqual(self.partition.get_fat_entry_offset(10, 1), 2068)
+
+    def test_fat_entry_offset_fat2(self):
+        """Vérifie le calcul de l'offset d'une entrée dans FAT2."""
+        # FAT2 commence à : (4 + 246) secteurs * 512 = 128000 octets
+        # Cluster 0 dans FAT2 : 128000 + (0 * 2) = 128000
+        self.assertEqual(self.partition.get_fat_entry_offset(0, 2), 128000)
+        # Cluster 2 dans FAT2 : 128000 + (2 * 2) = 128004
+        self.assertEqual(self.partition.get_fat_entry_offset(2, 2), 128004)
+        # Cluster 10 dans FAT2 : 128000 + (10 * 2) = 128020
+        self.assertEqual(self.partition.get_fat_entry_offset(10, 2), 128020)
+
+    def test_fat_entry_offset_invalid_cluster(self):
+        """Vérifie que les numéros de cluster invalides lèvent une exception."""
+        # Cluster négatif
+        with self.assertRaises(ValueError):
+            self.partition.get_fat_entry_offset(-1, 1)
+        # Cluster trop grand
+        with self.assertRaises(ValueError):
+            self.partition.get_fat_entry_offset(self.partition.total_fat_entries, 1)
+
+    def test_fat_entry_offset_invalid_fat_number(self):
+        """Vérifie que les numéros de FAT invalides lèvent une exception."""
+        with self.assertRaises(ValueError):
+            self.partition.get_fat_entry_offset(2, 0)
+        with self.assertRaises(ValueError):
+            self.partition.get_fat_entry_offset(2, 3)
+
     def test_get_info_dictionary(self):
         """Vérifie que get_info() retourne un dictionnaire complet."""
         info = self.partition.get_info()
@@ -178,6 +214,46 @@ class TestFATPartitionDifferentConfigurations(unittest.TestCase):
         # 128 * 32 / 4096 = 1 secteur
         self.assertEqual(partition.root_directory_sectors, 1)
         self.assertEqual(partition.cluster_size_bytes, 4096)
+
+    def test_fat12_entry_offset(self):
+        """Test de l'offset FAT avec FAT12 (1.5 octets par entrée)."""
+        partition = FATPartition(
+            octets_per_sector=512,
+            sectors_per_cluster=1,
+            reserved_sectors=1,
+            fat_count=2,
+            sectors_per_fat=9,
+            root_entries=224,
+            fat_type="FAT12"
+        )
+
+        # FAT1 commence à : 1 secteur * 512 = 512 octets
+        # Cluster 0 dans FAT1 : 512 + int(0 * 1.5) = 512
+        self.assertEqual(partition.get_fat_entry_offset(0, 1), 512)
+        # Cluster 2 dans FAT1 : 512 + int(2 * 1.5) = 512 + 3 = 515
+        self.assertEqual(partition.get_fat_entry_offset(2, 1), 515)
+        # Cluster 4 dans FAT1 : 512 + int(4 * 1.5) = 512 + 6 = 518
+        self.assertEqual(partition.get_fat_entry_offset(4, 1), 518)
+
+    def test_fat32_entry_offset(self):
+        """Test de l'offset FAT avec FAT32 (4 octets par entrée)."""
+        partition = FATPartition(
+            octets_per_sector=512,
+            sectors_per_cluster=8,
+            reserved_sectors=32,
+            fat_count=2,
+            sectors_per_fat=1952,
+            root_entries=0,
+            fat_type="FAT32"
+        )
+
+        # FAT1 commence à : 32 secteurs * 512 = 16384 octets
+        # Cluster 0 dans FAT1 : 16384 + (0 * 4) = 16384
+        self.assertEqual(partition.get_fat_entry_offset(0, 1), 16384)
+        # Cluster 2 dans FAT1 : 16384 + (2 * 4) = 16392
+        self.assertEqual(partition.get_fat_entry_offset(2, 1), 16392)
+        # Cluster 10 dans FAT1 : 16384 + (10 * 4) = 16424
+        self.assertEqual(partition.get_fat_entry_offset(10, 1), 16424)
 
 
 if __name__ == '__main__':

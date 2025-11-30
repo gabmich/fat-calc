@@ -161,14 +161,18 @@ class FATCalculatorGUI:
 
         self.create_legend(legend_frame)
 
-        # Frame pour la recherche de cluster
+        # Frame conteneur pour les deux sections de recherche
+        search_container = ttk.Frame(main_frame)
+        search_container.pack(fill=X, pady=(0, 0))
+
+        # Frame GAUCHE : Recherche d'offset de cluster
         cluster_frame = ttk.Labelframe(
-            main_frame,
+            search_container,
             text="Recherche d'Offset de Cluster",
             padding=15,
             bootstyle="warning"
         )
-        cluster_frame.pack(fill=X)
+        cluster_frame.pack(side=LEFT, fill=BOTH, expand=YES, padx=(0, 10))
 
         # Champ de saisie du cluster
         cluster_input_frame = ttk.Frame(cluster_frame)
@@ -198,6 +202,57 @@ class FATCalculatorGUI:
             wrap=WORD
         )
         self.cluster_result.pack(fill=X, pady=(10, 0))
+
+        # Frame DROITE : Recherche d'index dans la FAT
+        fat_index_frame = ttk.Labelframe(
+            search_container,
+            text="Recherche d'Index dans la FAT",
+            padding=15,
+            bootstyle="info"
+        )
+        fat_index_frame.pack(side=RIGHT, fill=BOTH, expand=YES)
+
+        # Champ de saisie du cluster pour recherche FAT
+        fat_input_frame = ttk.Frame(fat_index_frame)
+        fat_input_frame.pack(fill=X, pady=(0, 10))
+
+        ttk.Label(fat_input_frame, text="Numéro de cluster:").pack(side=LEFT, padx=(0, 10))
+
+        self.fat_cluster_entry = ttk.Entry(fat_input_frame, width=15, bootstyle="info")
+        self.fat_cluster_entry.insert(0, "2")
+        self.fat_cluster_entry.pack(side=LEFT, padx=(0, 10))
+        # Permettre de rechercher avec la touche Entrée
+        self.fat_cluster_entry.bind("<Return>", lambda e: self.search_fat_index())
+
+        # Dropdown pour choisir FAT1 ou FAT2
+        ttk.Label(fat_input_frame, text="FAT:").pack(side=LEFT, padx=(10, 5))
+        self.fat_number_var = ttk.StringVar(value="1")
+        fat_combo = ttk.Combobox(
+            fat_input_frame,
+            textvariable=self.fat_number_var,
+            values=["1", "2"],
+            state="readonly",
+            width=5,
+            bootstyle="info"
+        )
+        fat_combo.pack(side=LEFT, padx=(0, 10))
+
+        search_fat_button = ttk.Button(
+            fat_input_frame,
+            text="Rechercher",
+            command=self.search_fat_index,
+            bootstyle="info"
+        )
+        search_fat_button.pack(side=LEFT)
+
+        # Zone de texte pour afficher le résultat de la recherche FAT
+        self.fat_result = ttk.Text(
+            fat_index_frame,
+            height=2,
+            font=("Courier", 10, "bold"),
+            wrap=WORD
+        )
+        self.fat_result.pack(fill=X, pady=(10, 0))
 
     def create_legend(self, parent):
         """Crée la légende des couleurs de la cartographie."""
@@ -521,8 +576,9 @@ class FATCalculatorGUI:
             # Affichage des résultats
             self.display_results()
 
-            # Effacer la recherche de cluster précédente
+            # Effacer les recherches précédentes
             self.cluster_result.delete(1.0, END)
+            self.fat_result.delete(1.0, END)
 
             # Dessiner la cartographie
             self.root.after(100, self.draw_partition_map)  # Petit délai pour que le canvas soit bien dimensionné
@@ -594,6 +650,26 @@ class FATCalculatorGUI:
             self.cluster_result.insert(1.0, f"Erreur: {str(e)}")
             # Effacer la mise en évidence en cas d'erreur
             self.clear_highlight()
+
+    def search_fat_index(self):
+        """Recherche et affiche l'offset de l'entrée d'un cluster dans la FAT."""
+        # Effacer le contenu précédent
+        self.fat_result.delete(1.0, END)
+
+        if not self.partition:
+            self.fat_result.insert(1.0, "Veuillez d'abord calculer les informations de la partition.")
+            return
+
+        try:
+            cluster_number = int(self.fat_cluster_entry.get())
+            fat_number = int(self.fat_number_var.get())
+            offset = self.partition.get_fat_entry_offset(cluster_number, fat_number)
+
+            result = f"Cluster {cluster_number} dans FAT{fat_number} → Offset: {offset} octets (0x{offset:X})"
+            self.fat_result.insert(1.0, result)
+
+        except ValueError as e:
+            self.fat_result.insert(1.0, f"Erreur: {str(e)}")
 
 
 def main():

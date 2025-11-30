@@ -119,6 +119,40 @@ class FATPartition:
         """
         return sector_number * self.octets_per_sector
 
+    def get_fat_entry_offset(self, cluster_number, fat_number=1):
+        """
+        Calcule l'offset en octets de l'entrée d'un cluster dans la FAT.
+
+        Args:
+            cluster_number: Numéro du cluster (0 à total_fat_entries - 1)
+            fat_number: Numéro de la FAT (1 ou 2, défaut: 1)
+
+        Returns:
+            L'offset en octets depuis le début de la partition
+        """
+        if cluster_number < 0 or cluster_number >= self.total_fat_entries:
+            raise ValueError(f"Le numéro de cluster doit être entre 0 et {self.total_fat_entries - 1}")
+
+        if fat_number not in [1, 2]:
+            raise ValueError("Le numéro de FAT doit être 1 ou 2")
+
+        # Offset de base de la FAT
+        if fat_number == 1:
+            fat_start_offset = self.reserved_sectors * self.octets_per_sector
+        else:
+            fat_start_offset = (self.reserved_sectors + self.sectors_per_fat) * self.octets_per_sector
+
+        # Pour FAT12, le calcul est un peu spécial (1.5 octets par entrée)
+        if self.fat_type == "FAT12":
+            # Chaque cluster utilise 1.5 octets = 12 bits
+            # 2 entrées utilisent 3 octets
+            byte_offset = int(cluster_number * 1.5)
+        else:
+            # FAT16 et FAT32 : simple multiplication
+            byte_offset = int(cluster_number * self.bytes_per_fat_entry)
+
+        return fat_start_offset + byte_offset
+
     def get_info(self):
         """Retourne un dictionnaire avec toutes les informations de la partition."""
         return {
