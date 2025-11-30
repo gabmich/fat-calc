@@ -8,7 +8,7 @@ class FATPartition:
     DIRECTORY_ENTRY_SIZE = 32
 
     def __init__(self, octets_per_sector, sectors_per_cluster, reserved_sectors,
-                 fat_count, sectors_per_fat, root_entries):
+                 fat_count, sectors_per_fat, root_entries, fat_type="FAT16"):
         """
         Initialise une partition FAT avec ses paramètres.
 
@@ -19,6 +19,7 @@ class FATPartition:
             fat_count: Nombre de zones FAT (généralement 2)
             sectors_per_fat: Nombre de secteurs par zone FAT
             root_entries: Nombre d'entrées dans le répertoire racine
+            fat_type: Type de FAT ("FAT12", "FAT16", ou "FAT32")
         """
         self.octets_per_sector = octets_per_sector
         self.sectors_per_cluster = sectors_per_cluster
@@ -26,6 +27,7 @@ class FATPartition:
         self.fat_count = fat_count
         self.sectors_per_fat = sectors_per_fat
         self.root_entries = root_entries
+        self.fat_type = fat_type
 
     @property
     def root_directory_sectors(self):
@@ -54,6 +56,40 @@ class FATPartition:
     def cluster_size_bytes(self):
         """Calcule la taille d'un cluster en octets."""
         return self.sectors_per_cluster * self.octets_per_sector
+
+    @property
+    def bytes_per_fat_entry(self):
+        """Retourne le nombre d'octets par entrée FAT selon le type."""
+        if self.fat_type == "FAT12":
+            return 1.5
+        elif self.fat_type == "FAT16":
+            return 2
+        elif self.fat_type == "FAT32":
+            return 4
+        else:
+            return 2  # Par défaut FAT16
+
+    @property
+    def total_fat_entries(self):
+        """Calcule le nombre total d'entrées dans la FAT."""
+        fat_size_bytes = self.sectors_per_fat * self.octets_per_sector
+        return int(fat_size_bytes / self.bytes_per_fat_entry)
+
+    @property
+    def total_data_clusters(self):
+        """Calcule le nombre total de clusters de données disponibles."""
+        # Les 2 premières entrées (0 et 1) sont réservées
+        return self.total_fat_entries - 2
+
+    @property
+    def total_data_sectors(self):
+        """Calcule le nombre total de secteurs de données."""
+        return self.total_data_clusters * self.sectors_per_cluster
+
+    @property
+    def total_sectors(self):
+        """Calcule le nombre total de secteurs de la partition."""
+        return self.first_data_sector + self.total_data_sectors
 
     def get_cluster_offset(self, cluster_number):
         """
@@ -86,6 +122,7 @@ class FATPartition:
     def get_info(self):
         """Retourne un dictionnaire avec toutes les informations de la partition."""
         return {
+            'fat_type': self.fat_type,
             'octets_per_sector': self.octets_per_sector,
             'sectors_per_cluster': self.sectors_per_cluster,
             'cluster_size_bytes': self.cluster_size_bytes,
@@ -96,7 +133,11 @@ class FATPartition:
             'root_directory_sectors': self.root_directory_sectors,
             'fat_allocated_sectors': self.fat_allocated_sectors,
             'first_data_sector': self.first_data_sector,
-            'data_zone_offset': self.data_zone_offset
+            'data_zone_offset': self.data_zone_offset,
+            'total_fat_entries': self.total_fat_entries,
+            'total_data_clusters': self.total_data_clusters,
+            'total_data_sectors': self.total_data_sectors,
+            'total_sectors': self.total_sectors
         }
 
     def print_info(self):
@@ -104,6 +145,7 @@ class FATPartition:
         print("=" * 60)
         print("INFORMATIONS DE LA PARTITION FAT")
         print("=" * 60)
+        print(f"Type de FAT                : {self.fat_type}")
         print(f"Octets par secteur         : {self.octets_per_sector}")
         print(f"Secteurs par cluster       : {self.sectors_per_cluster}")
         print(f"Taille d'un cluster        : {self.cluster_size_bytes} octets")
@@ -116,4 +158,8 @@ class FATPartition:
         print("-" * 60)
         print(f"1er secteur de données     : {self.first_data_sector}")
         print(f"Offset zone de données     : {self.data_zone_offset} octets (0x{self.data_zone_offset:X})")
+        print(f"Nombre total d'entrées FAT : {self.total_fat_entries}")
+        print(f"Nombre de clusters données : {self.total_data_clusters}")
+        print(f"Secteurs de données totaux : {self.total_data_sectors}")
+        print(f"Nombre total de secteurs   : {self.total_sectors}")
         print("=" * 60)

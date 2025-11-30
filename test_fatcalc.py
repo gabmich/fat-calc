@@ -24,7 +24,8 @@ class TestFATPartition(unittest.TestCase):
             reserved_sectors=4,
             fat_count=2,
             sectors_per_fat=246,
-            root_entries=512
+            root_entries=512,
+            fat_type="FAT16"
         )
 
     def test_parameters(self):
@@ -132,7 +133,8 @@ class TestFATPartitionDifferentConfigurations(unittest.TestCase):
             reserved_sectors=1,
             fat_count=2,
             sectors_per_fat=9,
-            root_entries=224
+            root_entries=224,
+            fat_type="FAT16"
         )
 
         # 224 * 32 / 512 = 14 secteurs
@@ -152,7 +154,8 @@ class TestFATPartitionDifferentConfigurations(unittest.TestCase):
             reserved_sectors=32,
             fat_count=2,
             sectors_per_fat=1952,
-            root_entries=0  # FAT32 n'a pas de root directory fixe
+            root_entries=0,  # FAT32 n'a pas de root directory fixe
+            fat_type="FAT32"
         )
 
         self.assertEqual(partition.root_directory_sectors, 0)
@@ -168,7 +171,8 @@ class TestFATPartitionDifferentConfigurations(unittest.TestCase):
             reserved_sectors=1,
             fat_count=2,
             sectors_per_fat=5,
-            root_entries=128
+            root_entries=128,
+            fat_type="FAT16"
         )
 
         # 128 * 32 / 4096 = 1 secteur
