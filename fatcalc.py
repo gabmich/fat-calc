@@ -10,6 +10,9 @@ def main():
     print("=" * 60)
 
     # Collecte des paramètres de la partition
+    print("\nType de FAT (FAT12, FAT16, ou FAT32) [défaut: FAT16] : ", end="")
+    fat_type = input().strip() or "FAT16"
+
     octets_per_sector = int(input("Nombre d'octets par secteur : "))
     sectors_per_cluster = int(input("Nombre de secteurs par cluster : "))
     reserved_sectors = int(input("Nombre de secteurs réservés (reserved sectors) : "))
@@ -24,7 +27,8 @@ def main():
         reserved_sectors=reserved_sectors,
         fat_count=fat_count,
         sectors_per_fat=sectors_per_fat,
-        root_entries=root_entries
+        root_entries=root_entries,
+        fat_type=fat_type
     )
 
     # Affichage des informations
