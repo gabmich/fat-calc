@@ -611,6 +611,76 @@ class FATCalculatorGUI:
         self.highlighted_rect = None
         self.highlight_marker = None
 
+    def highlight_fat_entry(self, cluster_number, fat_number):
+        """Met en évidence l'emplacement d'une entrée FAT sur la cartographie."""
+        if not self.partition:
+            return
+
+        # Effacer la mise en évidence précédente
+        self.clear_highlight()
+
+        # Calculer l'offset de l'entrée dans la FAT
+        fat_entry_offset = self.partition.get_fat_entry_offset(cluster_number, fat_number)
+
+        # Calculer le secteur correspondant
+        sector_number = fat_entry_offset // self.partition.octets_per_sector
+
+        # Trouver le rectangle correspondant à ce secteur
+        if sector_number not in self.sector_to_rect:
+            # Le secteur n'est pas visible dans la cartographie
+            return
+
+        rect_id = self.sector_to_rect[sector_number]
+        info = self.square_info.get(rect_id)
+
+        if not info:
+            return
+
+        # Stocker le rectangle mis en évidence
+        self.highlighted_rect = rect_id
+
+        # Créer un marqueur visuel autour du carré
+        x, y = info['x'], info['y']
+        size = info['size']
+
+        # Bordure épaisse violette pour distinguer de la recherche de cluster
+        self.highlight_marker = self.map_canvas.create_rectangle(
+            x - 2, y - 2,
+            x + size + 2, y + size + 2,
+            outline="#8B00FF", width=4,
+            tags="highlight"
+        )
+
+        # Ajouter un texte "FAT X ENTRY" au-dessus du carré
+        text_x = x + size // 2
+        text_y = y - 10
+
+        self.highlight_text_bg = self.map_canvas.create_rectangle(
+            text_x - 50, text_y - 10,
+            text_x + 50, text_y + 10,
+            fill="#8B00FF", outline="black", width=2,
+            tags="highlight"
+        )
+
+        self.highlight_text = self.map_canvas.create_text(
+            text_x, text_y,
+            text=f"FAT{fat_number} ENTRY {cluster_number}",
+            font=("Helvetica", 8, "bold"),
+            fill="white",
+            tags="highlight"
+        )
+
+        # Scroller automatiquement vers l'entrée FAT
+        # Calculer le pourcentage de position
+        canvas_height = float(self.map_canvas.cget("height"))
+        scroll_region = self.map_canvas.cget("scrollregion").split()
+        if scroll_region and len(scroll_region) == 4:
+            total_height = float(scroll_region[3])
+            if total_height > 0:
+                # Centrer l'entrée dans la vue
+                scroll_position = max(0, min(1, (y - canvas_height / 2) / total_height))
+                self.map_canvas.yview_moveto(scroll_position)
+
     def calculate_partition(self):
         """Calcule et affiche les informations de la partition."""
         try:
@@ -757,8 +827,13 @@ class FATCalculatorGUI:
             result = f"Cluster {cluster_number} dans FAT{fat_number} → Offset: {offset} octets (0x{offset:X})"
             self.fat_result.insert(1.0, result)
 
+            # Mettre en évidence l'entrée FAT sur la cartographie
+            self.highlight_fat_entry(cluster_number, fat_number)
+
         except ValueError as e:
             self.fat_result.insert(1.0, f"Erreur: {str(e)}")
+            # Effacer la mise en évidence en cas d'erreur
+            self.clear_highlight()
 
     def reset_all(self):
         """Réinitialise toutes les vues et calculs."""
