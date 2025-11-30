@@ -45,6 +45,23 @@ class FATCalculatorGUI:
         )
         params_frame.pack(fill=X, pady=(0, 15))
 
+        # Type de FAT (en premier, sur toute la largeur)
+        fat_type_frame = ttk.Frame(params_frame)
+        fat_type_frame.grid(row=0, column=0, columnspan=4, sticky=EW, pady=(0, 10))
+
+        ttk.Label(fat_type_frame, text="Type de FAT:", font=("Helvetica", 10, "bold")).pack(side=LEFT, padx=(0, 10))
+
+        self.fat_type_var = ttk.StringVar(value="FAT16")
+        fat_type_combo = ttk.Combobox(
+            fat_type_frame,
+            textvariable=self.fat_type_var,
+            values=["FAT12", "FAT16", "FAT32"],
+            state="readonly",
+            width=10,
+            bootstyle="info"
+        )
+        fat_type_combo.pack(side=LEFT)
+
         # Définition des paramètres avec valeurs par défaut
         self.params = [
             ("Octets par secteur", "octets_per_sector", "512"),
@@ -57,9 +74,9 @@ class FATCalculatorGUI:
 
         self.entries = {}
 
-        # Création des champs de saisie
+        # Création des champs de saisie (commencer à la ligne 1)
         for i, (label_text, var_name, default_value) in enumerate(self.params):
-            row = i // 2
+            row = (i // 2) + 1  # +1 car la ligne 0 est pour le type FAT
             col = (i % 2) * 2
 
             label = ttk.Label(params_frame, text=label_text + ":")
@@ -125,9 +142,18 @@ class FATCalculatorGUI:
         map_title = ttk.Label(right_frame, text="Cartographie de la Partition", font=("Helvetica", 11, "bold"))
         map_title.pack(pady=(0, 10))
 
+        # Frame pour le canvas et la scrollbar
+        canvas_frame = ttk.Frame(right_frame)
+        canvas_frame.pack(fill=BOTH, expand=YES)
+
         # Canvas pour la cartographie
-        self.map_canvas = Canvas(right_frame, bg="white", relief=SOLID, borderwidth=1)
-        self.map_canvas.pack(fill=BOTH, expand=YES)
+        self.map_canvas = Canvas(canvas_frame, bg="white", relief=SOLID, borderwidth=1)
+        self.map_canvas.pack(side=LEFT, fill=BOTH, expand=YES)
+
+        # Scrollbar verticale
+        map_scrollbar = ttk.Scrollbar(canvas_frame, orient=VERTICAL, command=self.map_canvas.yview)
+        map_scrollbar.pack(side=RIGHT, fill=Y)
+        self.map_canvas.configure(yscrollcommand=map_scrollbar.set)
 
         # Légende
         legend_frame = ttk.Frame(right_frame)
@@ -153,6 +179,8 @@ class FATCalculatorGUI:
         self.cluster_entry = ttk.Entry(cluster_input_frame, width=15, bootstyle="warning")
         self.cluster_entry.insert(0, "2")
         self.cluster_entry.pack(side=LEFT, padx=(0, 10))
+        # Permettre de rechercher avec la touche Entrée
+        self.cluster_entry.bind("<Return>", lambda e: self.search_cluster())
 
         search_button = ttk.Button(
             cluster_input_frame,
@@ -213,18 +241,18 @@ class FATCalculatorGUI:
             canvas_height = 400
 
         # Calculer le nombre total de secteurs à afficher
-        total_sectors = self.partition.first_data_sector + 200  # Afficher aussi une partie de la zone data
+        # Utiliser le calcul automatique basé sur le type de FAT
+        total_sectors = self.partition.total_sectors
 
-        # Taille des carrés (plus grands)
+        # Taille des carrés
         square_size = 15
         spacing = 2
 
-        # Largeur fixe : nombre de carrés par ligne basé sur la structure de la partition
-        # On veut que toutes les zones importantes soient visibles
-        squares_per_row = 40  # Largeur fixe de 40 carrés par ligne
+        # Largeur fixe : nombre de carrés par ligne
+        squares_per_row = 80  # Largeur fixe de 80 carrés par ligne
 
-        # Calculer combien de secteurs représente chaque carré
-        sectors_per_square = max(1, total_sectors // (squares_per_row * 15))
+        # 1 carré = 1 secteur pour un maximum de détails
+        sectors_per_square = 1
 
         # Position de départ
         x_offset = 10
@@ -234,6 +262,7 @@ class FATCalculatorGUI:
 
         # Dictionnaire pour stocker les informations de chaque carré
         self.square_info = {}
+        self.sector_to_rect = {}  # Mapping secteur -> rectangle ID
 
         # Dessiner les secteurs
         current_sector = 0
@@ -276,15 +305,26 @@ class FATCalculatorGUI:
             rect_id = self.map_canvas.create_rectangle(
                 current_x, current_y,
                 current_x + square_size, current_y + square_size,
-                fill=color, outline="gray", width=1
+                fill=color, outline="gray", width=1,
+                tags="sector_rect"
             )
 
-            # Stocker les informations pour le tooltip
+            # Stocker les informations pour le tooltip et la recherche
             self.square_info[rect_id] = {
                 'type': sector_type,
                 'range': sector_range,
-                'color': color
+                'color': color,
+                'start_sector': current_sector,
+                'end_sector': current_sector + sectors_per_square - 1,
+                'x': current_x,
+                'y': current_y,
+                'size': square_size
             }
+
+            # Mapping secteur -> rectangle pour la recherche
+            for s in range(current_sector, current_sector + sectors_per_square):
+                if s < total_sectors:
+                    self.sector_to_rect[s] = rect_id
 
             # Passer au carré suivant
             current_x += square_size + spacing
@@ -297,14 +337,21 @@ class FATCalculatorGUI:
 
             current_sector += sectors_per_square
 
+        # Calculer la largeur totale nécessaire
+        total_width = x_offset + (squares_per_row * (square_size + spacing)) + 10
+
         # Ajouter un texte indiquant l'échelle
         scale_text = f"1 carré = {sectors_per_square} secteur(s) | Largeur: {squares_per_row} carrés"
         self.map_canvas.create_text(
-            canvas_width // 2, current_y + square_size + 20,
+            total_width // 2, current_y + square_size + 20,
             text=scale_text,
             font=("Helvetica", 9),
             fill="black"
         )
+
+        # Configurer la scrollregion pour permettre le défilement
+        total_height = current_y + square_size + 50
+        self.map_canvas.configure(scrollregion=(0, 0, total_width, total_height))
 
         # Créer le tooltip (initialement invisible)
         self.tooltip = self.map_canvas.create_text(
@@ -319,10 +366,31 @@ class FATCalculatorGUI:
         self.map_canvas.bind("<Motion>", self.on_mouse_move)
         self.map_canvas.bind("<Leave>", self.on_mouse_leave)
 
+        # Bind le scroll de la molette
+        self.map_canvas.bind("<MouseWheel>", self.on_mousewheel)
+        self.map_canvas.bind("<Button-4>", self.on_mousewheel)  # Linux scroll up
+        self.map_canvas.bind("<Button-5>", self.on_mousewheel)  # Linux scroll down
+
+        # Variables pour la mise en évidence du cluster
+        self.highlighted_rect = None
+        self.highlight_marker = None
+
+    def on_mousewheel(self, event):
+        """Gère le défilement avec la molette de la souris."""
+        # Windows/MacOS
+        if event.num == 4 or event.delta > 0:
+            self.map_canvas.yview_scroll(-1, "units")
+        elif event.num == 5 or event.delta < 0:
+            self.map_canvas.yview_scroll(1, "units")
+
     def on_mouse_move(self, event):
         """Affiche le tooltip au survol d'un carré."""
+        # Ajuster les coordonnées pour le scroll
+        canvas_x = self.map_canvas.canvasx(event.x)
+        canvas_y = self.map_canvas.canvasy(event.y)
+
         # Trouver le carré sous le curseur
-        items = self.map_canvas.find_overlapping(event.x, event.y, event.x, event.y)
+        items = self.map_canvas.find_overlapping(canvas_x, canvas_y, canvas_x, canvas_y)
 
         # Chercher un carré (rectangle) avec des informations
         for item in items:
@@ -330,9 +398,9 @@ class FATCalculatorGUI:
                 info = self.square_info[item]
                 tooltip_text = f"{info['type']}\n{info['range']}"
 
-                # Positionner et afficher le tooltip
-                x = event.x + 15
-                y = event.y + 15
+                # Positionner et afficher le tooltip (ajuster pour le scroll)
+                x = canvas_x + 15
+                y = canvas_y + 15
 
                 self.map_canvas.itemconfig(self.tooltip, text=tooltip_text, state="normal")
                 self.map_canvas.coords(self.tooltip, x, y)
@@ -357,6 +425,80 @@ class FATCalculatorGUI:
         self.map_canvas.itemconfig(self.tooltip, state="hidden")
         self.map_canvas.itemconfig(self.tooltip_bg, state="hidden")
 
+    def highlight_cluster(self, cluster_number):
+        """Met en évidence un cluster sur la cartographie."""
+        if not self.partition:
+            return
+
+        # Effacer la mise en évidence précédente
+        self.clear_highlight()
+
+        # Calculer le secteur correspondant au cluster
+        cluster_sector = self.partition.first_data_sector + (cluster_number - 2) * self.partition.sectors_per_cluster
+
+        # Trouver le rectangle correspondant à ce secteur
+        if cluster_sector not in self.sector_to_rect:
+            # Le cluster n'est pas visible dans la cartographie
+            return
+
+        rect_id = self.sector_to_rect[cluster_sector]
+        info = self.square_info.get(rect_id)
+
+        if not info:
+            return
+
+        # Stocker le rectangle mis en évidence
+        self.highlighted_rect = rect_id
+
+        # Créer un marqueur visuel autour du carré
+        x, y = info['x'], info['y']
+        size = info['size']
+
+        # Bordure épaisse rouge vif
+        self.highlight_marker = self.map_canvas.create_rectangle(
+            x - 2, y - 2,
+            x + size + 2, y + size + 2,
+            outline="#FF0000", width=4,
+            tags="highlight"
+        )
+
+        # Ajouter un texte "CLUSTER X" au-dessus du carré
+        text_x = x + size // 2
+        text_y = y - 10
+
+        self.highlight_text_bg = self.map_canvas.create_rectangle(
+            text_x - 40, text_y - 10,
+            text_x + 40, text_y + 10,
+            fill="#FF0000", outline="black", width=2,
+            tags="highlight"
+        )
+
+        self.highlight_text = self.map_canvas.create_text(
+            text_x, text_y,
+            text=f"CLUSTER {cluster_number}",
+            font=("Helvetica", 9, "bold"),
+            fill="white",
+            tags="highlight"
+        )
+
+        # Scroller automatiquement vers le cluster
+        # Calculer le pourcentage de position du cluster
+        canvas_height = float(self.map_canvas.cget("height"))
+        scroll_region = self.map_canvas.cget("scrollregion").split()
+        if scroll_region and len(scroll_region) == 4:
+            total_height = float(scroll_region[3])
+            if total_height > 0:
+                # Centrer le cluster dans la vue
+                scroll_position = max(0, min(1, (y - canvas_height / 2) / total_height))
+                self.map_canvas.yview_moveto(scroll_position)
+
+    def clear_highlight(self):
+        """Efface la mise en évidence du cluster."""
+        # Supprimer tous les éléments avec le tag "highlight"
+        self.map_canvas.delete("highlight")
+        self.highlighted_rect = None
+        self.highlight_marker = None
+
     def calculate_partition(self):
         """Calcule et affiche les informations de la partition."""
         try:
@@ -372,11 +514,15 @@ class FATCalculatorGUI:
                 reserved_sectors=params_values['reserved_sectors'],
                 fat_count=params_values['fat_count'],
                 sectors_per_fat=params_values['sectors_per_fat'],
-                root_entries=params_values['root_entries']
+                root_entries=params_values['root_entries'],
+                fat_type=self.fat_type_var.get()
             )
 
             # Affichage des résultats
             self.display_results()
+
+            # Effacer la recherche de cluster précédente
+            self.cluster_result.delete(1.0, END)
 
             # Dessiner la cartographie
             self.root.after(100, self.draw_partition_map)  # Petit délai pour que le canvas soit bien dimensionné
@@ -398,6 +544,7 @@ class FATCalculatorGUI:
         result += "INFORMATIONS DE LA PARTITION FAT\n"
         result += "=" * 70 + "\n\n"
 
+        result += f"Type de FAT                : {info['fat_type']}\n"
         result += f"Octets par secteur         : {info['octets_per_sector']}\n"
         result += f"Secteurs par cluster       : {info['sectors_per_cluster']}\n"
         result += f"Taille d'un cluster        : {info['cluster_size_bytes']} octets\n\n"
@@ -412,7 +559,14 @@ class FATCalculatorGUI:
 
         result += "-" * 70 + "\n"
         result += f"1er secteur de données     : {info['first_data_sector']}\n"
-        result += f"Offset zone de données     : {info['data_zone_offset']} octets (0x{info['data_zone_offset']:X})\n"
+        result += f"Offset zone de données     : {info['data_zone_offset']} octets (0x{info['data_zone_offset']:X})\n\n"
+
+        result += "CALCUL AUTOMATIQUE (basé sur le type de FAT)\n"
+        result += "-" * 70 + "\n"
+        result += f"Entrées FAT totales        : {info['total_fat_entries']}\n"
+        result += f"Clusters de données        : {info['total_data_clusters']}\n"
+        result += f"Secteurs de données        : {info['total_data_sectors']}\n"
+        result += f"TOTAL secteurs partition   : {info['total_sectors']}\n"
         result += "=" * 70 + "\n"
 
         self.results_text.insert(1.0, result)
@@ -433,8 +587,13 @@ class FATCalculatorGUI:
             result = f"Cluster {cluster_number} → Offset: {offset} octets (0x{offset:X})"
             self.cluster_result.insert(1.0, result)
 
+            # Mettre en évidence le cluster sur la cartographie
+            self.highlight_cluster(cluster_number)
+
         except ValueError as e:
             self.cluster_result.insert(1.0, f"Erreur: {str(e)}")
+            # Effacer la mise en évidence en cas d'erreur
+            self.clear_highlight()
 
 
 def main():
