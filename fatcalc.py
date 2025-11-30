@@ -1,39 +1,48 @@
-import os
+from FATPartition import FATPartition
+
 
 def main():
+    """
+    Script standalone qui permet de calculer l'offset du first_data_sector (cluster FAT 2)
+    et l'offset d'un cluster en particulier.
+    """
+    print("CALCULATEUR D'OFFSETS POUR PARTITION FAT")
+    print("=" * 60)
+
+    # Collecte des paramètres de la partition
     octets_per_sector = int(input("Nombre d'octets par secteur : "))
-    sectors_in_cluster_count = int(input("Nombre de secteurs par cluster : "))
-    reserved_sectors_count = int(input("Nombre de secteurs réservés (reserved sectors) : "))
-    fat_zones_count = int(input("Nombre de zones FAT : "))
-    sectors_per_fat_count = int(input("Nombre de secteurs par zone FAT : "))
-    root_directory_entries_count = int(input("Nombre d'entrées dans le root directory : "))
+    sectors_per_cluster = int(input("Nombre de secteurs par cluster : "))
+    reserved_sectors = int(input("Nombre de secteurs réservés (reserved sectors) : "))
+    fat_count = int(input("Nombre de zones FAT : "))
+    sectors_per_fat = int(input("Nombre de secteurs par zone FAT : "))
+    root_entries = int(input("Nombre d'entrées dans le root directory : "))
 
-    # Division entière pour obtenir le nombre de secteurs du root directory
-    root_directory_sectors = (root_directory_entries_count * 32) // octets_per_sector
-    # Calcul du nombre de secteurs alloués à la FAT
-    fat_allocated_sectors = fat_zones_count * sectors_per_fat_count
+    # Création de l'objet partition
+    partition = FATPartition(
+        octets_per_sector=octets_per_sector,
+        sectors_per_cluster=sectors_per_cluster,
+        reserved_sectors=reserved_sectors,
+        fat_count=fat_count,
+        sectors_per_fat=sectors_per_fat,
+        root_entries=root_entries
+    )
 
-    # Calcul de la position du "Cluster 2" (1er cluster où on trouve des Data), en secteurs
-    first_data_sector = reserved_sectors_count + fat_allocated_sectors + root_directory_sectors
+    # Affichage des informations
+    print()
+    partition.print_info()
 
-    # On peut ensuite calculer l'offset du premier cluster de la zone Data, soit le cluster 2
-    data_zone_offset = int(first_data_sector * octets_per_sector)
+    # Calcul d'offset pour un cluster spécifique
+    print()
+    cluster_number = int(input("N° de cluster dont vous voulez trouver l'offset : "))
 
-    print(42*'-')
-    print(f"1er secteur de Data : {first_data_sector}")
-    print(f"Offset de la zone Data : {data_zone_offset}")
-
-    cluster_to_reach = int(input("N° de cluster dont vous voulez trouver l'offset : "))
-
-    def offset(n):
-        """ Calcule l'offset (in octets) pour le cluster n """
-        return (first_data_sector + (n - 2) * sectors_in_cluster_count) * octets_per_sector
-
-    cluster_offset = offset(cluster_to_reach)
-
-    print(42*'-')
-    print(f"Offset du cluster {cluster_to_reach} (décimal) : {cluster_offset}")
-    print(f"Offset du cluster {cluster_to_reach} (hex) : {hex(cluster_offset)}")
+    try:
+        cluster_offset = partition.get_cluster_offset(cluster_number)
+        print("-" * 60)
+        print(f"Offset du cluster {cluster_number} (décimal) : {cluster_offset}")
+        print(f"Offset du cluster {cluster_number} (hex)     : {hex(cluster_offset)}")
+        print("=" * 60)
+    except ValueError as e:
+        print(f"Erreur : {e}")
 
 
 if __name__ == "__main__":
