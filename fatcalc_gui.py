@@ -92,15 +92,29 @@ class FATCalculatorGUI:
         params_frame.columnconfigure(1, weight=1)
         params_frame.columnconfigure(3, weight=1)
 
+        # Frame pour les boutons de calcul et réinitialisation
+        buttons_frame = ttk.Frame(main_frame)
+        buttons_frame.pack(pady=10)
+
         # Bouton de calcul
         calc_button = ttk.Button(
-            main_frame,
+            buttons_frame,
             text="Calculer les Informations",
             command=self.calculate_partition,
             bootstyle="success",
             width=30
         )
-        calc_button.pack(pady=10)
+        calc_button.pack(side=LEFT, padx=(0, 10))
+
+        # Bouton de réinitialisation
+        reset_button = ttk.Button(
+            buttons_frame,
+            text="Réinitialiser",
+            command=self.reset_all,
+            bootstyle="danger",
+            width=20
+        )
+        reset_button.pack(side=LEFT)
 
         # Frame pour les résultats
         results_frame = ttk.Labelframe(
@@ -745,6 +759,42 @@ class FATCalculatorGUI:
 
         except ValueError as e:
             self.fat_result.insert(1.0, f"Erreur: {str(e)}")
+
+    def reset_all(self):
+        """Réinitialise toutes les vues et calculs."""
+        # Réinitialiser la partition
+        self.partition = None
+
+        # Effacer la zone de texte des résultats
+        self.results_text.delete(1.0, END)
+        self.results_text.insert(1.0, "Veuillez entrer les paramètres et cliquer sur 'Calculer les Informations'")
+
+        # Effacer la cartographie
+        self.map_canvas.delete("all")
+
+        # Effacer les zones de recherche
+        self.cluster_result.delete(1.0, END)
+        self.offset_result.delete(1.0, END)
+        self.fat_result.delete(1.0, END)
+
+        # Remettre les valeurs par défaut dans les champs de recherche
+        self.cluster_entry.delete(0, END)
+        self.cluster_entry.insert(0, "2")
+
+        self.offset_entry.delete(0, END)
+        self.offset_entry.insert(0, "270336")
+
+        self.fat_cluster_entry.delete(0, END)
+        self.fat_cluster_entry.insert(0, "2")
+
+        self.fat_number_var.set("1")
+
+        # Effacer les highlights
+        self.clear_highlight()
+
+        # Réinitialiser les variables de highlight
+        self.highlighted_rect = None
+        self.highlight_marker = None
 
 
 def main():
