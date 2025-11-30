@@ -161,26 +161,31 @@ class FATCalculatorGUI:
 
         self.create_legend(legend_frame)
 
-        # Frame conteneur pour les deux sections de recherche
+        # Frame conteneur pour les trois sections de recherche avec grid
         search_container = ttk.Frame(main_frame)
         search_container.pack(fill=X, pady=(0, 0))
+
+        # Configurer les colonnes pour qu'elles aient le même poids (largeur égale)
+        search_container.columnconfigure(0, weight=1)
+        search_container.columnconfigure(1, weight=1)
+        search_container.columnconfigure(2, weight=1)
 
         # Frame GAUCHE : Recherche d'offset de cluster
         cluster_frame = ttk.Labelframe(
             search_container,
-            text="Recherche d'Offset de Cluster",
+            text="Cluster → Offset",
             padding=15,
             bootstyle="warning"
         )
-        cluster_frame.pack(side=LEFT, fill=BOTH, expand=YES, padx=(0, 10))
+        cluster_frame.grid(row=0, column=0, sticky=EW, padx=(0, 5))
 
         # Champ de saisie du cluster
         cluster_input_frame = ttk.Frame(cluster_frame)
         cluster_input_frame.pack(fill=X, pady=(0, 10))
 
-        ttk.Label(cluster_input_frame, text="Numéro de cluster:").pack(side=LEFT, padx=(0, 10))
+        ttk.Label(cluster_input_frame, text="N° cluster:").pack(side=LEFT, padx=(0, 10))
 
-        self.cluster_entry = ttk.Entry(cluster_input_frame, width=15, bootstyle="warning")
+        self.cluster_entry = ttk.Entry(cluster_input_frame, width=12, bootstyle="warning")
         self.cluster_entry.insert(0, "2")
         self.cluster_entry.pack(side=LEFT, padx=(0, 10))
         # Permettre de rechercher avec la touche Entrée
@@ -188,7 +193,7 @@ class FATCalculatorGUI:
 
         search_button = ttk.Button(
             cluster_input_frame,
-            text="Rechercher",
+            text="Chercher",
             command=self.search_cluster,
             bootstyle="warning"
         )
@@ -198,48 +203,86 @@ class FATCalculatorGUI:
         self.cluster_result = ttk.Text(
             cluster_frame,
             height=2,
-            font=("Courier", 10, "bold"),
+            font=("Courier", 9, "bold"),
             wrap=WORD
         )
         self.cluster_result.pack(fill=X, pady=(10, 0))
 
+        # Frame MILIEU : Recherche de cluster depuis offset
+        offset_frame = ttk.Labelframe(
+            search_container,
+            text="Offset → Cluster",
+            padding=15,
+            bootstyle="success"
+        )
+        offset_frame.grid(row=0, column=1, sticky=EW, padx=(5, 5))
+
+        # Champ de saisie de l'offset
+        offset_input_frame = ttk.Frame(offset_frame)
+        offset_input_frame.pack(fill=X, pady=(0, 10))
+
+        ttk.Label(offset_input_frame, text="Offset:").pack(side=LEFT, padx=(0, 10))
+
+        self.offset_entry = ttk.Entry(offset_input_frame, width=12, bootstyle="success")
+        self.offset_entry.insert(0, "270336")
+        self.offset_entry.pack(side=LEFT, padx=(0, 10))
+        # Permettre de rechercher avec la touche Entrée
+        self.offset_entry.bind("<Return>", lambda e: self.search_cluster_from_offset())
+
+        search_offset_button = ttk.Button(
+            offset_input_frame,
+            text="Chercher",
+            command=self.search_cluster_from_offset,
+            bootstyle="success"
+        )
+        search_offset_button.pack(side=LEFT)
+
+        # Zone de texte pour afficher le résultat de la recherche d'offset
+        self.offset_result = ttk.Text(
+            offset_frame,
+            height=2,
+            font=("Courier", 9, "bold"),
+            wrap=WORD
+        )
+        self.offset_result.pack(fill=X, pady=(10, 0))
+
         # Frame DROITE : Recherche d'index dans la FAT
         fat_index_frame = ttk.Labelframe(
             search_container,
-            text="Recherche d'Index dans la FAT",
+            text="Cluster → Index FAT",
             padding=15,
             bootstyle="info"
         )
-        fat_index_frame.pack(side=RIGHT, fill=BOTH, expand=YES)
+        fat_index_frame.grid(row=0, column=2, sticky=EW, padx=(5, 0))
 
         # Champ de saisie du cluster pour recherche FAT
         fat_input_frame = ttk.Frame(fat_index_frame)
         fat_input_frame.pack(fill=X, pady=(0, 10))
 
-        ttk.Label(fat_input_frame, text="Numéro de cluster:").pack(side=LEFT, padx=(0, 10))
+        ttk.Label(fat_input_frame, text="N° cluster:").pack(side=LEFT, padx=(0, 10))
 
-        self.fat_cluster_entry = ttk.Entry(fat_input_frame, width=15, bootstyle="info")
+        self.fat_cluster_entry = ttk.Entry(fat_input_frame, width=8, bootstyle="info")
         self.fat_cluster_entry.insert(0, "2")
         self.fat_cluster_entry.pack(side=LEFT, padx=(0, 10))
         # Permettre de rechercher avec la touche Entrée
         self.fat_cluster_entry.bind("<Return>", lambda e: self.search_fat_index())
 
         # Dropdown pour choisir FAT1 ou FAT2
-        ttk.Label(fat_input_frame, text="FAT:").pack(side=LEFT, padx=(10, 5))
+        ttk.Label(fat_input_frame, text="FAT:").pack(side=LEFT, padx=(5, 5))
         self.fat_number_var = ttk.StringVar(value="1")
         fat_combo = ttk.Combobox(
             fat_input_frame,
             textvariable=self.fat_number_var,
             values=["1", "2"],
             state="readonly",
-            width=5,
+            width=3,
             bootstyle="info"
         )
-        fat_combo.pack(side=LEFT, padx=(0, 10))
+        fat_combo.pack(side=LEFT, padx=(0, 5))
 
         search_fat_button = ttk.Button(
             fat_input_frame,
-            text="Rechercher",
+            text="Chercher",
             command=self.search_fat_index,
             bootstyle="info"
         )
@@ -249,7 +292,7 @@ class FATCalculatorGUI:
         self.fat_result = ttk.Text(
             fat_index_frame,
             height=2,
-            font=("Courier", 10, "bold"),
+            font=("Courier", 9, "bold"),
             wrap=WORD
         )
         self.fat_result.pack(fill=X, pady=(10, 0))
@@ -578,6 +621,7 @@ class FATCalculatorGUI:
 
             # Effacer les recherches précédentes
             self.cluster_result.delete(1.0, END)
+            self.offset_result.delete(1.0, END)
             self.fat_result.delete(1.0, END)
 
             # Dessiner la cartographie
@@ -648,6 +692,37 @@ class FATCalculatorGUI:
 
         except ValueError as e:
             self.cluster_result.insert(1.0, f"Erreur: {str(e)}")
+            # Effacer la mise en évidence en cas d'erreur
+            self.clear_highlight()
+
+    def search_cluster_from_offset(self):
+        """Recherche et affiche le cluster correspondant à un offset."""
+        # Effacer le contenu précédent
+        self.offset_result.delete(1.0, END)
+
+        if not self.partition:
+            self.offset_result.insert(1.0, "Veuillez d'abord calculer les informations de la partition.")
+            return
+
+        try:
+            # Lire l'offset (support décimal et hexadécimal)
+            offset_str = self.offset_entry.get().strip()
+            if offset_str.startswith("0x") or offset_str.startswith("0X"):
+                offset = int(offset_str, 16)
+            else:
+                offset = int(offset_str)
+
+            # Obtenir le cluster et la position dans le cluster
+            cluster_number, offset_dans_cluster = self.partition.get_cluster_from_offset(offset)
+
+            result = f"Offset {offset} (0x{offset:X}) → Cluster {cluster_number} + {offset_dans_cluster} octets"
+            self.offset_result.insert(1.0, result)
+
+            # Mettre en évidence le cluster sur la cartographie
+            self.highlight_cluster(cluster_number)
+
+        except ValueError as e:
+            self.offset_result.insert(1.0, f"Erreur: {str(e)}")
             # Effacer la mise en évidence en cas d'erreur
             self.clear_highlight()
 

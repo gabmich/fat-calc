@@ -104,6 +104,58 @@ class TestFATPartition(unittest.TestCase):
         # Secteur 528 (premier data sector) = 270336 octets
         self.assertEqual(self.partition.get_sector_offset(528), 270336)
 
+    def test_cluster_from_offset_aligned(self):
+        """Vérifie le calcul du cluster depuis un offset aligné."""
+        # Offset 270336 = début du cluster 2
+        cluster, offset_in_cluster = self.partition.get_cluster_from_offset(270336)
+        self.assertEqual(cluster, 2)
+        self.assertEqual(offset_in_cluster, 0)
+
+        # Offset du cluster 3 = 272384
+        cluster, offset_in_cluster = self.partition.get_cluster_from_offset(272384)
+        self.assertEqual(cluster, 3)
+        self.assertEqual(offset_in_cluster, 0)
+
+        # Offset du cluster 562 = 1417216
+        cluster, offset_in_cluster = self.partition.get_cluster_from_offset(1417216)
+        self.assertEqual(cluster, 562)
+        self.assertEqual(offset_in_cluster, 0)
+
+    def test_cluster_from_offset_non_aligned(self):
+        """Vérifie le calcul du cluster depuis un offset non aligné."""
+        # Offset 272000 = cluster 2 + 1664 octets
+        cluster, offset_in_cluster = self.partition.get_cluster_from_offset(272000)
+        self.assertEqual(cluster, 2)
+        self.assertEqual(offset_in_cluster, 1664)
+
+        # Offset 270336 + 1024 = cluster 2 + 1024 octets
+        cluster, offset_in_cluster = self.partition.get_cluster_from_offset(271360)
+        self.assertEqual(cluster, 2)
+        self.assertEqual(offset_in_cluster, 1024)
+
+    def test_cluster_from_offset_before_data_zone(self):
+        """Vérifie que les offsets avant la zone de données lèvent une exception."""
+        # Offset 0 (boot sector)
+        with self.assertRaises(ValueError) as context:
+            self.partition.get_cluster_from_offset(0)
+        self.assertIn("avant la zone de données", str(context.exception))
+
+        # Offset 1000 (dans les secteurs réservés/FAT)
+        with self.assertRaises(ValueError) as context:
+            self.partition.get_cluster_from_offset(1000)
+        self.assertIn("avant la zone de données", str(context.exception))
+
+        # Offset juste avant la zone de données
+        with self.assertRaises(ValueError) as context:
+            self.partition.get_cluster_from_offset(270335)
+        self.assertIn("avant la zone de données", str(context.exception))
+
+    def test_cluster_from_offset_negative(self):
+        """Vérifie que les offsets négatifs lèvent une exception."""
+        with self.assertRaises(ValueError) as context:
+            self.partition.get_cluster_from_offset(-1)
+        self.assertIn("positif", str(context.exception))
+
     def test_fat_entry_offset_fat1(self):
         """Vérifie le calcul de l'offset d'une entrée dans FAT1."""
         # FAT1 commence à : 4 secteurs réservés * 512 = 2048 octets

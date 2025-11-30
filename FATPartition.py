@@ -119,6 +119,46 @@ class FATPartition:
         """
         return sector_number * self.octets_per_sector
 
+    def get_cluster_from_offset(self, offset):
+        """
+        Calcule le numéro de cluster depuis un offset absolu.
+
+        Args:
+            offset: Offset en octets depuis le début de la partition
+
+        Returns:
+            Tuple (cluster_number, offset_dans_cluster) où:
+            - cluster_number: Numéro du cluster contenant cet offset
+            - offset_dans_cluster: Position en octets dans le cluster (0 à cluster_size_bytes - 1)
+
+        Raises:
+            ValueError: Si l'offset n'est pas dans la zone de données
+        """
+        if offset < 0:
+            raise ValueError("L'offset doit être positif")
+
+        if offset < self.data_zone_offset:
+            # L'offset est avant la zone de données
+            raise ValueError(f"L'offset {offset} (0x{offset:X}) est avant la zone de données. "
+                           f"Zone de données commence à {self.data_zone_offset} (0x{self.data_zone_offset:X})")
+
+        # Calculer le nombre de secteurs depuis le début de la zone de données
+        sectors_from_data_start = (offset - self.data_zone_offset) // self.octets_per_sector
+
+        # Calculer le numéro de cluster (rappel: cluster 2 est le premier cluster de données)
+        cluster_number = (sectors_from_data_start // self.sectors_per_cluster) + 2
+
+        # Calculer l'offset dans le cluster
+        offset_dans_cluster = offset - self.get_cluster_offset(cluster_number)
+
+        # Vérifier que le cluster est valide
+        max_cluster = self.total_data_clusters + 2 - 1  # +2 car on commence à 2, -1 car c'est le dernier
+        if cluster_number > max_cluster:
+            raise ValueError(f"L'offset {offset} (0x{offset:X}) dépasse la zone de données. "
+                           f"Dernier cluster valide: {max_cluster}")
+
+        return cluster_number, offset_dans_cluster
+
     def get_fat_entry_offset(self, cluster_number, fat_number=1):
         """
         Calcule l'offset en octets de l'entrée d'un cluster dans la FAT.
