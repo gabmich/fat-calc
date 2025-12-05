@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                               QHBoxLayout, QPushButton, QFileDialog, QLabel,
                               QSplitter, QGroupBox, QScrollArea, QTextEdit,
                               QSpinBox, QComboBox, QMessageBox, QTabWidget,
-                              QFrame, QLineEdit)
+                              QFrame, QLineEdit, QListWidget, QListWidgetItem, QCheckBox)
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction, QPainter, QColor, QPen
 
@@ -324,6 +324,43 @@ class FATSimulatorGUI(QMainWindow):
         search_frame.setLayout(search_layout)
         left_layout.addWidget(search_frame)
 
+        # Section de recherche de texte
+        text_search_frame = QFrame()
+        text_search_frame.setFrameStyle(QFrame.Shape.Box | QFrame.Shadow.Raised)
+        text_search_frame.setStyleSheet("background-color: #FFF3E0; padding: 5px;")
+        text_search_layout = QVBoxLayout()
+        text_search_layout.setContentsMargins(8, 5, 8, 5)
+        text_search_layout.setSpacing(5)
+
+        # Ligne de recherche
+        search_input_layout = QHBoxLayout()
+        search_input_layout.addWidget(QLabel("🔎 Recherche texte:"))
+        self.text_search_input = QLineEdit()
+        self.text_search_input.setPlaceholderText("Texte à rechercher...")
+        self.text_search_input.returnPressed.connect(self.search_text_in_data)
+        search_input_layout.addWidget(self.text_search_input)
+
+        self.text_search_button = QPushButton("🔎 Chercher")
+        self.text_search_button.clicked.connect(self.search_text_in_data)
+        search_input_layout.addWidget(self.text_search_button)
+
+        # Case à cocher pour la sensibilité à la casse
+        self.case_sensitive_checkbox = QCheckBox("Sensible à la casse")
+        self.case_sensitive_checkbox.setChecked(False)  # Décochée par défaut
+        search_input_layout.addWidget(self.case_sensitive_checkbox)
+
+        text_search_layout.addLayout(search_input_layout)
+
+        # Zone de résultats (scrollable, hauteur limitée)
+        self.text_search_results = QListWidget()
+        self.text_search_results.setMaximumHeight(120)
+        self.text_search_results.itemClicked.connect(self.on_text_search_result_clicked)
+        self.text_search_results.setStyleSheet("QListWidget { background-color: white; border: 1px solid #FFB74D; }")
+        text_search_layout.addWidget(self.text_search_results)
+
+        text_search_frame.setLayout(text_search_layout)
+        left_layout.addWidget(text_search_frame)
+
         # Éditeur de chaîne
         chain_group = QGroupBox("Éditeur de Chaîne FAT")
         chain_group_layout = QVBoxLayout()
@@ -400,6 +437,10 @@ class FATSimulatorGUI(QMainWindow):
         self.search_cluster_input.clear()
         self.search_result_label.setText("Entrez un numéro de cluster pour voir ses informations")
         self.search_result_label.setStyleSheet("color: #666; font-size: 9pt; padding: 2px;")
+
+        # Effacer la recherche de texte
+        self.text_search_input.clear()
+        self.text_search_results.clear()
 
         # Effacer les mises en évidence sur la cartographie
         self.partition_map.clear_highlight()
@@ -545,7 +586,8 @@ class FATSimulatorGUI(QMainWindow):
             offset = bs.first_data_sector * bs.bytes_per_sector
             offset += (cluster_number - 2) * bs.sectors_per_cluster * bs.bytes_per_sector
 
-            # Afficher dans le hex viewer de la chaîne
+            # Afficher dans le hex viewer de la chaîne (sans highlights)
+            self.chain_hex_viewer.highlight_ranges = []  # Effacer les highlights avant d'afficher
             self.chain_hex_viewer.set_title(f"Cluster {cluster_number} (Offset: 0x{offset:X})")
             self.chain_hex_viewer.set_data(data, offset)
 
@@ -668,11 +710,163 @@ class FATSimulatorGUI(QMainWindow):
             self.search_result_label.setStyleSheet("QLineEdit { color: #D32F2F; font-weight: bold; font-size: 9pt; background-color: transparent; border: none; }")
             self.partition_map.clear_highlight()
 
+    def search_text_in_data(self):
+        """Recherche un texte dans la zone de données de la partition"""
+        if not self.parser:
+            QMessageBox.warning(self, "Erreur", "Veuillez d'abord ouvrir une image .raw")
+            return
+
+        search_text = self.text_search_input.text()
+        if not search_text:
+            QMessageBox.warning(self, "Erreur", "Veuillez entrer un texte à rechercher")
+            return
+
+        # Effacer les résultats précédents
+        self.text_search_results.clear()
+
+        try:
+            bs = self.parser.boot_sector
+            case_sensitive = self.case_sensitive_checkbox.isChecked()
+
+            # Encoder le texte de recherche
+            search_bytes = search_text.encode('utf-8')
+            if not case_sensitive:
+                search_bytes = search_bytes.lower()
+
+            # Lire toute la zone de données
+            data_start_offset = bs.first_data_sector * bs.bytes_per_sector
+            cluster_size = bs.sectors_per_cluster * bs.bytes_per_sector
+
+            # Rechercher dans les clusters
+            results = []
+            max_results = 100  # Limiter à 100 résultats
+
+            # Parcourir tous les clusters de données
+            total_clusters = bs.total_clusters
+            for cluster_num in range(2, total_clusters + 2):
+                if len(results) >= max_results:
+                    break
+
+                try:
+                    # Lire le cluster
+                    cluster_data = self.parser.read_cluster(cluster_num)
+
+                    # Pour recherche insensible à la casse, convertir en minuscules
+                    search_data = cluster_data if case_sensitive else cluster_data.lower()
+
+                    # Rechercher le texte dans ce cluster
+                    offset = 0
+                    while True:
+                        pos = search_data.find(search_bytes, offset)
+                        if pos == -1:
+                            break
+
+                        # Calculer l'offset absolu
+                        cluster_offset = (cluster_num - 2) * cluster_size
+                        absolute_offset = data_start_offset + cluster_offset + pos
+
+                        # Extraire un contexte autour de la correspondance
+                        context_start = max(0, pos - 20)
+                        context_end = min(len(cluster_data), pos + len(search_bytes) + 20)
+                        context = cluster_data[context_start:context_end]
+
+                        # Convertir en texte lisible (remplacer les non-imprimables)
+                        context_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in context)
+
+                        results.append({
+                            'cluster': cluster_num,
+                            'offset': absolute_offset,
+                            'position_in_cluster': pos,
+                            'match_length': len(search_bytes),
+                            'context': context_str
+                        })
+
+                        if len(results) >= max_results:
+                            break
+
+                        offset = pos + 1
+
+                except Exception as e:
+                    # Ignorer les erreurs de lecture de cluster
+                    continue
+
+            # Afficher les résultats
+            if results:
+                for result in results:
+                    item_text = f"Cluster {result['cluster']} @ 0x{result['offset']:08X} ({result['offset']}) - ...{result['context']}..."
+                    item = QListWidgetItem(item_text)
+                    item.setData(Qt.ItemDataRole.UserRole, result)
+                    self.text_search_results.addItem(item)
+
+                self.text_search_results.setCurrentRow(0)
+                QMessageBox.information(
+                    self,
+                    "Recherche terminée",
+                    f"✅ {len(results)} occurrence(s) trouvée(s)" +
+                    (f"\n(Limité aux {max_results} premières)" if len(results) >= max_results else "")
+                )
+            else:
+                QMessageBox.information(self, "Recherche terminée", "❌ Aucune occurrence trouvée")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur", f"Erreur lors de la recherche:\n{str(e)}")
+
+    def on_text_search_result_clicked(self, item):
+        """Callback quand un résultat de recherche est cliqué"""
+        result = item.data(Qt.ItemDataRole.UserRole)
+        if not result:
+            return
+
+        try:
+            bs = self.parser.boot_sector
+            cluster_num = result['cluster']
+            absolute_offset = result['offset']
+
+            # 1. Charger la chaîne FAT pour ce cluster
+            chain = self.parser.parse_fat_chain(self.fat_data, cluster_num)
+            self.chain_editor.set_chain(chain)
+
+            # 2. Lire et afficher le contenu du cluster dans le hex viewer
+            cluster_data = self.parser.read_cluster(cluster_num)
+            cluster_offset = bs.first_data_sector * bs.bytes_per_sector + (cluster_num - 2) * bs.sectors_per_cluster * bs.bytes_per_sector
+
+            self.chain_hex_viewer.set_title(f"Cluster {cluster_num} (Offset: 0x{cluster_offset:X}) - Résultat de recherche")
+            self.chain_hex_viewer.set_data(cluster_data, cluster_offset)
+
+            # 2b. Mettre en évidence le texte trouvé dans le hex viewer
+            position_in_cluster = result['position_in_cluster']
+            match_length = result.get('match_length', 0)
+            if match_length > 0:
+                self.chain_hex_viewer.highlight_range(position_in_cluster, match_length)
+
+            # 3. Calculer les secteurs pour la mise en évidence
+            fat_entry_offset = bs.reserved_sectors * bs.bytes_per_sector + (cluster_num * 2)
+            fat_sector = fat_entry_offset // bs.bytes_per_sector
+            data_sector = bs.first_data_sector + (cluster_num - 2) * bs.sectors_per_cluster
+
+            # 4. Mettre en évidence dans la cartographie
+            self.partition_map.highlight_positions(fat_sector, data_sector, cluster_num)
+
+            # 5. Scroller jusqu'au cluster dans la carte
+            if data_sector in self.partition_map.sector_positions:
+                hx, hy = self.partition_map.sector_positions[data_sector]
+                self.map_scroll_area.ensureVisible(hx, hy, 100, 100)
+
+            # 6. Afficher le résultat dans l'éditeur de chaîne
+            result_msg = f"✅ Cluster {cluster_num} | Offset: {absolute_offset} (0x{absolute_offset:X}) | Position dans cluster: {result['position_in_cluster']}"
+            self.chain_editor.set_search_result(result_msg)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur", f"Erreur lors de l'affichage du résultat:\n{str(e)}")
+
     def enable_controls(self, enabled: bool):
         """Active ou désactive les contrôles"""
         self.search_button.setEnabled(enabled)
         self.search_cluster_input.setEnabled(enabled)
         self.search_format_combo.setEnabled(enabled)
+        self.text_search_button.setEnabled(enabled)
+        self.text_search_input.setEnabled(enabled)
+        self.case_sensitive_checkbox.setEnabled(enabled)
 
     def closeEvent(self, event):
         """Gère la fermeture de l'application"""

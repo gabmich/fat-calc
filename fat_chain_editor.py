@@ -84,7 +84,6 @@ class ClusterBlock(QLabel):
                 }
                 QLabel:hover {
                     background-color: #69DB7C;
-                    cursor: pointer;
                 }
             """)
 

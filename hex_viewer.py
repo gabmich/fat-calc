@@ -15,6 +15,7 @@ class HexViewer(QWidget):
         self.data = b''
         self.current_offset = 0  # Stocker l'offset courant
         self.bytes_per_line = bytes_per_line  # Configurable: 8, 16, 32, etc.
+        self.highlight_ranges = []  # Liste de tuples (start, length) à mettre en évidence
         self.setup_ui()
 
     def setup_ui(self):
@@ -80,8 +81,16 @@ class HexViewer(QWidget):
 
             # Octets en hexadécimal
             hex_part = ""
-            for byte in line:
-                hex_part += f"{byte:02X} "
+            for j, byte in enumerate(line):
+                byte_pos = i + j
+                is_highlighted = any(start <= byte_pos < start + length
+                                    for start, length in self.highlight_ranges)
+
+                if is_highlighted:
+                    hex_part += f'<span style="background-color: #FFFF00; font-weight: bold;">{byte:02X}</span> '
+                else:
+                    hex_part += f"{byte:02X} "
+
             # Padding si ligne incomplète
             hex_part += "   " * (self.bytes_per_line - len(line))
 
@@ -89,11 +98,20 @@ class HexViewer(QWidget):
 
             # Représentation ASCII
             ascii_part = ""
-            for byte in line:
+            for j, byte in enumerate(line):
+                byte_pos = i + j
+                is_highlighted = any(start <= byte_pos < start + length
+                                    for start, length in self.highlight_ranges)
+
                 if 32 <= byte < 127:
-                    ascii_part += chr(byte)
+                    char = chr(byte)
                 else:
-                    ascii_part += "."
+                    char = "."
+
+                if is_highlighted:
+                    ascii_part += f'<span style="background-color: #FFFF00; color: #000000; font-weight: bold;">{char}</span>'
+                else:
+                    ascii_part += char
 
             line_html += f'<span style="color: #009900;">{ascii_part}</span>'
             html_lines.append(line_html)
@@ -108,17 +126,63 @@ class HexViewer(QWidget):
         cursor.movePosition(QTextCursor.MoveOperation.Start)
         self.text_edit.setTextCursor(cursor)
 
-    def highlight_range(self, start: int, length: int):
+    def highlight_range(self, start: int, length: int, scroll_to: bool = True):
         """
         Met en évidence une plage d'octets
-        (Fonctionnalité future pour mettre en évidence des sections spécifiques)
+
+        Args:
+            start: Position de départ (relative au début des données affichées)
+            length: Nombre d'octets à mettre en évidence
+            scroll_to: Si True, scrolle automatiquement vers la zone mise en évidence
         """
-        # TODO: Implémenter la mise en évidence de plages spécifiques
-        pass
+        self.highlight_ranges = [(start, length)]
+        # Rafraîchir l'affichage si des données sont présentes
+        if self.data:
+            self.set_data(self.data, self.current_offset)
+            if scroll_to:
+                self.scroll_to_position(start)
+
+    def scroll_to_position(self, byte_position: int):
+        """
+        Scrolle le hex viewer vers une position d'octet spécifique
+
+        Args:
+            byte_position: Position de l'octet (relative au début des données)
+        """
+        if not self.data or byte_position < 0 or byte_position >= len(self.data):
+            return
+
+        # Calculer la ligne où se trouve cet octet
+        # Ligne 0 = en-tête, ligne 1 = séparateur, lignes de données commencent à 2
+        line_number = (byte_position // self.bytes_per_line) + 2
+
+        # Obtenir le curseur
+        cursor = self.text_edit.textCursor()
+
+        # Se déplacer au début du document
+        cursor.movePosition(QTextCursor.MoveOperation.Start)
+
+        # Se déplacer vers la ligne cible
+        for _ in range(line_number):
+            cursor.movePosition(QTextCursor.MoveOperation.Down)
+
+        # Positionner le curseur
+        self.text_edit.setTextCursor(cursor)
+
+        # Centrer la vue sur le curseur
+        self.text_edit.ensureCursorVisible()
+
+    def clear_highlights(self):
+        """Efface toutes les mises en évidence"""
+        self.highlight_ranges = []
+        # Rafraîchir l'affichage si des données sont présentes
+        if self.data:
+            self.set_data(self.data, self.current_offset)
 
     def clear(self):
         """Efface le contenu du hex viewer"""
         self.data = b''
+        self.highlight_ranges = []
         self.text_edit.clear()
 
     def set_bytes_per_line(self, bytes_per_line: int):
