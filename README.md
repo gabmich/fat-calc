@@ -1,415 +1,458 @@
-# Calculateur FAT - Offsets et Secteurs
+# FAT16 Simulator - Forensic Analysis Tool
 
-Un ensemble d'outils complets pour calculer les offsets et positions dans une partition FAT (FAT12, FAT16, FAT32) avec une interface graphique moderne et une cartographie visuelle interactive.
+Outil forensique interactif pour analyser et éditer des images disque FAT16 (.raw). Permet de visualiser la structure de la partition, inspecter le contenu en hexadécimal, et reconstituer des chaînages FAT cassés de manière ludique.
 
-![License](https://img.shields.io/badge/license-Educational-blue)
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue)
+![License](https://img.shields.io/badge/license-Educational-blue)
 
 ## 🎯 Fonctionnalités
 
-### Calculs Automatiques
-- ✅ Calcul du premier secteur de données
-- ✅ Calcul de l'offset de la zone de données
-- ✅ Calcul de l'offset d'un cluster spécifique
-- ✅ **Calcul automatique de la taille totale de la partition** (basé sur le type FAT)
-- ✅ Support FAT12, FAT16 et FAT32
+### ✅ Actuellement Implémenté (FAT16)
 
-### Interface Graphique (GUI)
-- 🎨 Interface moderne avec TTK Bootstrap
-- 🗺️ **Cartographie visuelle interactive** de la partition
-  - 1 carré = 1 secteur (détail maximal)
-  - Couleurs distinctes par zone (Boot, FAT1, FAT2, Root, Data)
-  - Scrollbar verticale pour explorer toute la partition
-  - Support molette de souris
-- 🔍 **Recherche de cluster avec mise en évidence**
-  - Bordure rouge autour du cluster trouvé
-  - Scroll automatique vers le cluster
-  - Label "CLUSTER X" visible
-- 💡 Tooltips informatifs au survol (type de zone, plage de secteurs)
-- ⌨️ Support touche Entrée pour lancer la recherche
-- 📊 Affichage en décimal et hexadécimal
+#### 📂 Analyse d'Images Disque
+- ✅ Ouverture d'images .raw, .img, .dd
+- ✅ Détection automatique des partitions (MBR)
+- ✅ Lecture du Boot Sector FAT16
+- ✅ Extraction de tous les paramètres de partition :
+  - Octets par secteur
+  - Secteurs par cluster
+  - Secteurs réservés
+  - Nombre de zones FAT
+  - Secteurs par zone FAT
+  - Entrées du répertoire racine
+  - Volume label et ID
 
-### Outils en Ligne de Commande
-- 🖥️ Interface CLI interactive
-- 📦 Module Python réutilisable dans vos propres scripts
+#### 🗺️ Visualisation de la Partition
+- ✅ Carte graphique de la partition avec code couleur :
+  - 🟡 **Jaune** : Boot Sector
+  - 🔴 **Rouge** : Reserved Sectors
+  - 🟢 **Vert clair** : FAT 1
+  - 🟢 **Vert foncé** : FAT 2
+  - 🟠 **Orange** : Root Directory
+  - 🔵 **Bleu** : Data Zone
+- ✅ Légende interactive
+- ✅ Vue 1 carré = 1 secteur (détail maximal)
 
-### Tests et Qualité
-- ✅ Suite de tests unitaires complète (15 tests)
-- ✅ Tests de régression pour éviter les régressions
-- ✅ Support configurations FAT12, FAT16, FAT32
+#### 🔍 Hex Viewer Intégré
+- ✅ Visualisation hexadécimale + ASCII
+- ✅ Affichage par **Secteur** (avec numéro)
+- ✅ Affichage par **Cluster** (2+)
+- ✅ Affichage de la **FAT** (FAT1 ou FAT2)
+- ✅ Offsets automatiques affichés
+- ✅ Coloration syntaxique
+
+#### 📊 Table FAT Complète
+- ✅ **Visualisation de tous les clusters** en grille colorée
+- ✅ **Code couleur intelligent** :
+  - 🔲 Gris : Cluster libre
+  - 🟢 Vert : Cluster utilisé (→ suivant)
+  - 🔴 Rouge : EOF (fin de chaîne)
+  - 🟠 Orange : Cluster défectueux
+  - 🟡 Jaune : Réservé
+- ✅ **Clic** sur un cluster → affichage dans le Hex Viewer
+- ✅ **Double-clic** sur un cluster → ajout à la chaîne
+- ✅ **Drag & drop** depuis la table vers la chaîne
+- ✅ Recherche rapide (Aller au cluster)
+- ✅ Sélection visuelle (bordure bleue)
+
+#### 🔗 Éditeur de Chaîne FAT (Drag & Drop Positionnel)
+- ✅ Chargement automatique d'une chaîne depuis un cluster de départ
+- ✅ Visualisation graphique de la chaîne (blocs colorés + flèches)
+- ✅ **Zones de drop entre chaque cluster** (📍)
+- ✅ **Drag & drop positionnel** : insérer un cluster n'importe où
+- ✅ **Glisser depuis la table FAT** vers la chaîne
+- ✅ **Réorganiser les clusters** dans la chaîne (drag entre positions)
+- ✅ Ajout manuel de clusters (bouton ➕)
+- ✅ Ajout de marqueur EOF (0xFFFF) (bouton 🔚)
+- ✅ **Clic** sur un cluster → affichage dans le Hex Viewer
+- ✅ **Clic droit** sur un cluster → menu contextuel (Supprimer/Voir)
+- ✅ Indicateur de clusters cassés (⚠)
+- ✅ Effacement de la chaîne
+- ✅ **Feedback visuel** pendant le drag (zones bleues)
+
+### 🚧 Prévu Mais Non Implémenté
+
+- ⏳ Support FAT12
+- ⏳ Support FAT32
+- ⏳ Sauvegarde des modifications dans l'image .raw
+- ⏳ Édition directe des valeurs FAT en hexadécimal
+- ⏳ Export/Import de chaînes FAT en JSON
+- ⏳ Reconstruction automatique de fichiers
+- ⏳ Détection automatique de corruption
+- ⏳ Undo/Redo
+- ⏳ Comparaison FAT1 vs FAT2
+
+---
 
 ## 📥 Installation
 
-### 1. Prérequis système (pour l'interface graphique)
+### 1. Prérequis
 
-**Sur Ubuntu/Debian :**
-```bash
-sudo apt-get install python3-tk
-```
+- **Python 3.8+**
+- **PyQt6** (installé via pip)
 
-**Sur Fedora/RHEL :**
-```bash
-sudo dnf install python3-tkinter
-```
-
-**Sur Arch Linux :**
-```bash
-sudo pacman -S tk
-```
-
-### 2. Configuration de l'environnement
+### 2. Installation
 
 ```bash
-# Cloner ou télécharger le projet
-cd fat-calc
+cd fat-simulator
 
-# Créer l'environnement virtuel
-python3 -m venv env
+# Créer un environnement virtuel (recommandé)
+python3 -m venv venv
 
 # Activer l'environnement
-source env/bin/activate  # Linux/Mac
+source venv/bin/activate  # Linux/Mac
 # ou
-env\Scripts\activate  # Windows
+venv\Scripts\activate  # Windows
 
 # Installer les dépendances
 pip install -r requirements.txt
 ```
 
+---
+
 ## 🚀 Utilisation
 
-### Interface Graphique (GUI) - Recommandé
-
-**Lancement rapide :**
-```bash
-./run_gui.sh
-```
-
-**Ou manuellement :**
-```bash
-source env/bin/activate
-python fatcalc_gui.py
-```
-
-#### Fonctionnalités de la GUI
-
-1. **Sélection du type de FAT**
-   - Dropdown : FAT12 / FAT16 / FAT32
-   - Calcul automatique basé sur le type sélectionné
-
-2. **Paramètres de partition** (valeurs par défaut pré-remplies)
-   - Octets par secteur : `512`
-   - Secteurs par cluster : `4`
-   - Secteurs réservés : `4`
-   - Nombre de zones FAT : `2`
-   - Secteurs par zone FAT : `246`
-   - Entrées du répertoire racine : `512`
-
-3. **Calcul et affichage**
-   - Cliquez sur **"Calculer les Informations"**
-   - Vue textuelle détaillée à gauche
-   - Cartographie visuelle interactive à droite
-
-4. **Cartographie interactive**
-   - **Légende des couleurs :**
-     - 🟡 Jaune : Boot Sector
-     - 🔴 Rouge : Reserved Sectors
-     - 🟢 Vert clair : FAT 1
-     - 🟢 Vert foncé : FAT 2
-     - 🟠 Orange : Root Directory
-     - 🔵 Bleu : Data Zone
-   - **Navigation :**
-     - Scrollbar verticale ou molette de souris
-     - 1 carré = 1 secteur (détail complet)
-     - Passez la souris sur un carré pour voir les détails
-
-5. **Recherche de cluster**
-   - Entrez le numéro de cluster (ex: `562`)
-   - Cliquez "Rechercher" ou appuyez sur **Entrée**
-   - Le cluster est automatiquement mis en évidence en rouge
-   - La vue scrolle vers le cluster
-   - L'offset est affiché (décimal et hexadécimal)
-
-### Interface en Ligne de Commande (CLI)
+### Lancement de l'Application
 
 ```bash
-source env/bin/activate
-python fatcalc.py
+# Avec le script de lancement
+./run_simulator.sh
+
+# Ou manuellement
+source venv/bin/activate
+python fat_simulator_gui.py
 ```
 
-Exemple d'interaction :
+### Workflow Typique
+
+1. **Ouvrir une image** :
+   - Cliquez sur "📂 Ouvrir Image .raw" ou `Ctrl+O`
+   - Sélectionnez votre fichier .raw, .img ou .dd
+   - L'application détecte automatiquement les partitions FAT16
+
+2. **Explorer la structure** :
+   - Consultez les informations de la partition (gauche)
+   - Visualisez la carte graphique (droite)
+
+3. **Inspecter en hexadécimal** :
+   - Onglet "📄 Hex Viewer"
+   - Sélectionnez le type : Secteur / Cluster / FAT
+   - Entrez le numéro
+   - Cliquez "Afficher"
+
+4. **Explorer la table FAT complète** :
+   - Onglet "📊 Table FAT Complète"
+   - Visualisez tous les clusters avec code couleur
+   - **Cliquez** sur un cluster pour voir son contenu en hexa
+   - **Double-cliquez** sur un cluster pour l'ajouter à la chaîne
+   - **Glissez** un cluster vers la chaîne (drag & drop)
+   - Utilisez "Aller au cluster" pour naviguer rapidement
+
+5. **Reconstituer une chaîne FAT** :
+   - Onglet "🔗 Éditeur de Chaîne FAT"
+
+   **Méthode 1 - Chargement automatique :**
+   - Entrez le cluster de départ (ex: 2)
+   - Cliquez "📥 Charger Chaîne"
+   - La chaîne s'affiche graphiquement
+
+   **Méthode 2 - Construction manuelle :**
+   - Allez dans "📊 Table FAT Complète"
+   - **Glissez** des clusters depuis la table vers la chaîne
+   - Déposez-les entre les clusters existants (zones +)
+   - Réorganisez en glissant les clusters dans la chaîne
+
+   **Éditer la chaîne** :
+     - ➕ Ajouter un cluster manuellement (numéro)
+     - 🔚 Ajouter un marqueur EOF (fin de fichier)
+     - **Glisser/Déposer positionnel** : insérer n'importe où
+     - **Clic** sur un cluster → voir son contenu
+     - **Clic droit** → Supprimer / Voir le contenu
+     - Les zones **+** (bleues au survol) = zones de drop
+
+6. **Sauvegarder (futur)** :
+   - Cliquez "💾 Sauvegarder Chaîne" (non implémenté)
+
+---
+
+## 📐 Architecture du Projet
+
 ```
-CALCULATEUR D'OFFSETS POUR PARTITION FAT
-============================================================
-
-Type de FAT (FAT12, FAT16, ou FAT32) [défaut: FAT16] : FAT16
-Nombre d'octets par secteur : 512
-Nombre de secteurs par cluster : 4
-...
+fat-simulator/
+├── fat16_parser.py          # Parser pour images .raw FAT16
+├── hex_viewer.py            # Widget hex viewer (PyQt6)
+├── fat_table_viewer.py      # Widget table FAT complète (grille)
+├── fat_chain_editor.py      # Widget éditeur de chaîne FAT (drag & drop)
+├── fat_simulator_gui.py     # Application principale (GUI)
+├── create_test_image.py     # Générateur d'images de test
+├── requirements.txt         # Dépendances Python
+├── run_simulator.sh         # Script de lancement
+├── .gitignore               # Fichiers à ignorer
+└── README.md                # Documentation
 ```
 
-### Utilisation comme Module Python
+### Composants Principaux
 
-```python
-from FATPartition import FATPartition
+#### `fat16_parser.py`
+- **Classes** :
+  - `BootSector` : Représente le boot sector FAT16
+  - `MBRPartition` : Représente une partition dans le MBR
+  - `FAT16Parser` : Parser principal pour lire l'image .raw
 
-# Créer une partition FAT16
-partition = FATPartition(
-    octets_per_sector=512,
-    sectors_per_cluster=4,
-    reserved_sectors=4,
-    fat_count=2,
-    sectors_per_fat=246,
-    root_entries=512,
-    fat_type="FAT16"  # Nouveau paramètre
-)
+- **Méthodes clés** :
+  - `read_mbr()` : Lit le Master Boot Record
+  - `read_boot_sector()` : Lit le boot sector FAT16
+  - `read_sector(n)` : Lit un secteur spécifique
+  - `read_cluster(n)` : Lit un cluster spécifique
+  - `read_fat(1|2)` : Lit une table FAT complète
+  - `parse_fat_chain(start)` : Parse une chaîne FAT
+  - `get_fat_entry(cluster)` : Retourne la valeur d'une entrée FAT
 
-# Afficher toutes les informations
-partition.print_info()
+#### `hex_viewer.py`
+- Widget PyQt6 pour afficher des données en hexadécimal
+- Format : Offset | Hex | ASCII
+- Coloration syntaxique
+- Support des offsets personnalisés
 
-# Obtenir l'offset d'un cluster
-offset = partition.get_cluster_offset(10)
-print(f"Cluster 10 : {offset} octets (0x{offset:X})")
+#### `fat_table_viewer.py`
+- Widget PyQt6 pour afficher la table FAT complète
+- **ClusterCell** : Cellules cliquables représentant chaque cluster
+- Grille de 10 colonnes (personnalisable)
+- Code couleur selon l'état du cluster
+- Recherche rapide (aller au cluster)
+- Support drag & drop vers la chaîne
 
-# Accéder aux propriétés calculées automatiquement
-print(f"Total secteurs : {partition.total_sectors}")
-print(f"Total clusters : {partition.total_data_clusters}")
-print(f"Taille partition : {partition.total_sectors * partition.octets_per_sector} octets")
+#### `fat_chain_editor.py`
+- Widget PyQt6 pour éditer des chaînes FAT
+- **ClusterBlock** : Blocs draggables représentant des clusters
+- **DropZone** : Zones de drop entre les clusters (insertion positionnelle)
+- Support drag & drop bidirectionnel
+- Visualisation EOF (0xFFFF)
+- Détection de clusters cassés (⚠)
+- Menu contextuel (clic droit)
 
-# Obtenir toutes les infos en dictionnaire
-info = partition.get_info()
-print(info)
+#### `fat_simulator_gui.py`
+- Application principale PyQt6
+- Interface à onglets (Hex Viewer / Éditeur FAT)
+- Carte de partition interactive
+- Gestion des événements utilisateur
+
+---
+
+## 🎨 Interface Utilisateur
+
+### Fenêtre Principale
+
+```
+┌───────────────────────────────────────────────────────────────┐
+│ Fichier                                                        │
+├───────────────────────────────────────────────────────────────┤
+│ [📂 Ouvrir Image .raw]  ✓ Image chargée: disk.raw            │
+├───────────────────┬───────────────────────────────────────────┤
+│ Informations      │ Carte de la Partition                     │
+│ de la Partition   │ [Visualisation graphique colorée]         │
+│                   │ 🟡🔴🟢🟢🟠🔵🔵🔵🔵🔵...                     │
+│ - Octets/secteur  │                                            │
+│ - Secteurs/cluster│ Légende: Boot Reserved FAT1 FAT2 ...      │
+│ - ...             │                                            │
+├───────────────────┴───────────────────────────────────────────┤
+│ ┌─ 📄 Hex Viewer ─── 📊 Table FAT ─── 🔗 Éditeur Chaîne ──┐│
+│ │ Type: [Cluster ▾] Numéro: [2] [Afficher]                 ││
+│ │                                                            ││
+│ │ Offset    00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D ...   ││
+│ │ 00042000  4D 79 46 69 6C 65 20 20 54 58 54 20 00 ...       ││
+│ │ 00042010  ...                                              ││
+│ └────────────────────────────────────────────────────────────┘│
+└───────────────────────────────────────────────────────────────┘
 ```
 
-#### Propriétés disponibles
+### Table FAT Complète
 
-**Propriétés de base :**
-- `octets_per_sector`
-- `sectors_per_cluster`
-- `reserved_sectors`
-- `fat_count`
-- `sectors_per_fat`
-- `root_entries`
-- `fat_type`
+```
+┌────────────────────────────────────────────────────────────┐
+│ Table FAT - Tous les Clusters  [Aller au cluster: ___ ↓]  │
+├────────────────────────────────────────────────────────────┤
+│ 💡 Cliquez pour voir, double-cliquez pour ajouter         │
+│                                                             │
+│ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐   │
+│ │[0]│ │[1]│ │[2]│ │[3]│ │[4]│ │[5]│ │[6]│ │[7]│ │[8]│   │
+│ │RES│ │EOF│ │→3 │ │→4 │ │EOF│ │→6 │ │EOF│ │⚠ │ │   │   │
+│ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘   │
+│                                                             │
+│ 🔲 Libre  🟢 Utilisé  🔴 EOF  🟠 Défectueux  🟡 Réservé   │
+└────────────────────────────────────────────────────────────┘
+```
 
-**Propriétés calculées :**
-- `root_directory_sectors` : Secteurs occupés par le root directory
-- `fat_allocated_sectors` : Secteurs totaux des FAT
-- `first_data_sector` : Numéro du premier secteur de données
-- `data_zone_offset` : Offset en octets de la zone data
-- `cluster_size_bytes` : Taille d'un cluster en octets
-- `bytes_per_fat_entry` : Octets par entrée FAT (1.5, 2 ou 4)
-- `total_fat_entries` : Nombre total d'entrées FAT
-- `total_data_clusters` : Nombre de clusters disponibles
-- `total_data_sectors` : Nombre de secteurs de données
-- `total_sectors` : **Taille totale de la partition en secteurs** ⭐
+### Éditeur de Chaîne FAT (Drag & Drop Positionnel)
 
-**Méthodes :**
-- `get_cluster_offset(cluster_number)` : Retourne l'offset d'un cluster
-- `get_sector_offset(sector_number)` : Retourne l'offset d'un secteur
-- `get_info()` : Retourne toutes les infos en dictionnaire
-- `print_info()` : Affiche toutes les informations
+```
+┌────────────────────────────────────────────────────────────┐
+│ Éditeur de Chaîne FAT  [➕ Ajouter] [🔚 EOF] [🗑️ Effacer] │
+├────────────────────────────────────────────────────────────┤
+│ 💡 Glissez des clusters depuis la table FAT               │
+│ Cluster de départ: [2 ▾] [📥 Charger Chaîne]              │
+│                                                             │
+│ ┌─┐ ┌─────────┐ ┌─┐ ┌─────────┐ ┌─┐ ┌─────────┐ ┌─┐ ┌───┐│
+│ │+│ │Cluster  │ │+│ │Cluster  │ │+│ │Cluster  │ │+│ │EOF││
+│ │ │ │   2     │ │ │ │   3     │ │ │ │   5     │ │ │ │...││
+│ └─┘ └─────────┘ └─┘ └─────────┘ └─┘ └─────────┘ └─┘ └───┘│
+│      ⤷ flèche →      ⤷ flèche →      ⤷ flèche →           │
+│                                                             │
+│ Chaîne: 4 cluster(s) | Clusters: 2, 3, 5, 65535           │
+└────────────────────────────────────────────────────────────┘
 
-## 🧪 Tests
+Zones + : Déposez un cluster ici pour l'insérer à cette position
+```
 
-Exécuter les tests unitaires :
+---
+
+## 🔬 Cas d'Usage
+
+### 1. Forensique Numérique
+- Analyser des images disque suspectes
+- Identifier des fichiers supprimés
+- Reconstituer des chaînes FAT corrompues
+- Extraire des données fragmentées
+
+### 2. Récupération de Données
+- Réparer des chaînages FAT cassés
+- Reconstruire manuellement des fichiers
+- Localiser des clusters orphelins
+
+### 3. Éducation
+- Apprendre la structure FAT16
+- Comprendre le chaînage de clusters
+- Visualiser l'organisation physique du disque
+- Expérimenter avec des images test
+
+### 4. Recherche
+- Analyser le comportement du système de fichiers
+- Tester des scénarios de corruption
+- Développer des algorithmes de récupération
+
+---
+
+## 🧪 Créer une Image Test
+
+Pour tester l'application, vous pouvez créer une petite image FAT16 :
 
 ```bash
-source env/bin/activate
-python test_fatcalc.py
+# Créer une image de 10 MB
+dd if=/dev/zero of=test.raw bs=1M count=10
+
+# Formater en FAT16
+mkfs.vfat -F 16 test.raw
+
+# Monter l'image
+sudo mkdir -p /mnt/test
+sudo mount -o loop test.raw /mnt/test
+
+# Créer des fichiers de test
+echo "Test file 1" | sudo tee /mnt/test/file1.txt
+echo "Test file 2" | sudo tee /mnt/test/file2.txt
+
+# Démonter
+sudo umount /mnt/test
 ```
 
-Avec affichage détaillé :
-```bash
-python test_fatcalc.py -v
+Ensuite, ouvrez `test.raw` dans l'application !
+
+---
+
+## 🛠️ Développement
+
+### Ajouter de Nouvelles Fonctionnalités
+
+1. **Support FAT32** : Modifier `fat16_parser.py` pour gérer les différences FAT32
+2. **Sauvegarde** : Implémenter l'écriture dans le fichier .raw
+3. **Undo/Redo** : Ajouter un système de commandes réversibles
+4. **Export** : Permettre d'exporter les clusters reconstruits
+
+### Architecture MVC
+
+L'application suit une architecture Modèle-Vue-Contrôleur :
+- **Modèle** : `fat16_parser.py` (logique métier)
+- **Vue** : Widgets PyQt6 (`hex_viewer.py`, `fat_chain_editor.py`)
+- **Contrôleur** : `fat_simulator_gui.py` (gestion des événements)
+
+---
+
+## ⚠️ Limitations Actuelles
+
+- ✋ **Lecture seule** : Les modifications ne sont pas encore sauvegardées
+- ✋ **FAT16 uniquement** : FAT12 et FAT32 non supportés
+- ✋ **Images < 5 GB** : Performance optimale pour petites images
+- ✋ **Pas de validation** : Pas de vérification de cohérence FAT
+
+---
+
+## 🗺️ Roadmap
+
+### Version 1.1 (Futur Proche)
+- [ ] Sauvegarde des modifications dans le fichier .raw
+- [ ] Édition directe des valeurs FAT en hexadécimal
+- [ ] Drop à position spécifique dans la chaîne
+- [ ] Export de chaînes FAT en JSON
+
+### Version 1.2 (Futur)
+- [ ] Support FAT32
+- [ ] Détection automatique de corruption
+- [ ] Reconstruction automatique de fichiers
+- [ ] Comparaison FAT1 vs FAT2
+
+### Version 2.0 (Futur Lointain)
+- [ ] Support FAT12
+- [ ] Mode diff pour comparer deux images
+- [ ] Génération de rapports forensiques
+- [ ] Plugin system
+
+---
+
+## 📝 Notes Techniques
+
+### Format FAT16
+
+**Structure de base :**
+```
+[Boot Sector] [Reserved] [FAT1] [FAT2] [Root Dir] [Data Zone]
+     1           1-3      246     246      32      Reste
 ```
 
-**Suite de tests (15 tests) :**
-- Paramètres d'initialisation
-- Calculs de secteurs et clusters
-- Calculs d'offsets
-- Validation des erreurs
-- Configurations FAT12/16/32
+**Entrées FAT16 (2 octets)** :
+- `0x0000` : Cluster libre
+- `0x0002-0xFFEF` : Cluster suivant dans la chaîne
+- `0xFFF0-0xFFF6` : Réservé
+- `0xFFF7` : Cluster défectueux
+- `0xFFF8-0xFFFF` : Fin de chaîne (EOF)
 
-## 📂 Structure du Projet
+### PyQt6
 
-```
-fat-calc/
-├── FATPartition.py      # Classe principale avec calculs intelligents
-├── fatcalc.py           # Interface CLI interactive
-├── fatcalc_gui.py       # Interface graphique moderne (GUI)
-├── test_fatcalc.py      # Suite de tests unitaires (15 tests)
-├── requirements.txt     # Dépendances Python (ttkbootstrap)
-├── run_gui.sh           # Script de lancement rapide de la GUI
-├── .gitignore           # Fichiers à ignorer par Git
-├── env/                 # Environnement virtuel Python (à créer)
-└── README.md            # Documentation complète
-```
+Technologies utilisées :
+- **PyQt6** : Framework GUI cross-platform
+- **Signals/Slots** : Système d'événements Qt
+- **Drag & Drop** : API Qt native
+- **QPainter** : Rendu graphique personnalisé
 
-## 📊 Calculs Effectués
+---
 
-### Structure d'une Partition FAT
+## 📄 Licence
 
-```
-┌─────────────────┬───────┬───────┬──────────────┬────────────────────┐
-│ Boot + Reserved │ FAT 1 │ FAT 2 │ Root Dir     │ Data Zone          │
-│ (jaune + rouge) │(vert) │(vert) │ (orange)     │ (bleu)             │
-└─────────────────┴───────┴───────┴──────────────┴────────────────────┘
-```
+Ce projet est à usage **éducatif et de recherche forensique**.
 
-### Formules Utilisées
+⚠️ **Avertissement** : Utilisez cet outil uniquement sur vos propres images ou avec autorisation explicite. L'utilisation à des fins malveillantes est strictement interdite.
 
-#### Formules de base
-- **Secteurs du répertoire racine** : `(nombre_entrées × 32) ÷ octets_par_secteur`
-- **Secteurs FAT totaux** : `nombre_zones_FAT × secteurs_par_zone_FAT`
-- **Premier secteur de données** : `secteurs_réservés + secteurs_FAT + secteurs_root_dir`
-- **Offset zone de données** : `premier_secteur_données × octets_par_secteur`
-- **Offset cluster N** : `(premier_secteur_données + (N - 2) × secteurs_par_cluster) × octets_par_secteur`
-
-#### Calculs automatiques intelligents (⭐ Nouveau)
-- **Octets par entrée FAT** :
-  - FAT12 : 1.5 octets
-  - FAT16 : 2 octets
-  - FAT32 : 4 octets
-- **Entrées FAT totales** : `(secteurs_par_FAT × octets_par_secteur) ÷ octets_par_entrée`
-- **Clusters de données** : `entrées_FAT_totales - 2` (clusters 0 et 1 réservés)
-- **Secteurs de données** : `clusters_de_données × secteurs_par_cluster`
-- **Total secteurs partition** : `premier_secteur_données + secteurs_de_données`
-
-### Exemple de Calcul (FAT16)
-
-**Entrées :**
-```
-Type FAT : FAT16
-Octets/secteur : 512
-Secteurs/cluster : 4
-Secteurs réservés : 4
-Zones FAT : 2
-Secteurs/FAT : 246
-Entrées root : 512
-```
-
-**Calculs intermédiaires :**
-```
-Root directory : (512 × 32) ÷ 512 = 32 secteurs
-FAT totaux : 2 × 246 = 492 secteurs
-1er secteur data : 4 + 492 + 32 = 528
-```
-
-**Calculs automatiques :**
-```
-Entrées FAT : (246 × 512) ÷ 2 = 62,976 entrées
-Clusters data : 62,976 - 2 = 62,974 clusters
-Secteurs data : 62,974 × 4 = 251,896 secteurs
-TOTAL : 528 + 251,896 = 252,424 secteurs (~123 MB)
-```
-
-**Cluster 562 :**
-```
-Secteur : 528 + (562 - 2) × 4 = 2,768
-Offset : 2,768 × 512 = 1,417,216 octets (0x15A000)
-```
-
-## 📖 Exemples de Configurations
-
-### Disquette 1.44 MB (FAT12)
-```
-Type FAT : FAT12
-Octets/secteur : 512
-Secteurs/cluster : 1
-Secteurs réservés : 1
-Zones FAT : 2
-Secteurs/FAT : 9
-Entrées root : 224
-→ Total : 2,880 secteurs (1.44 MB)
-```
-
-### Partition FAT16 Typique (128 MB)
-```
-Type FAT : FAT16
-Octets/secteur : 512
-Secteurs/cluster : 4
-Secteurs réservés : 4
-Zones FAT : 2
-Secteurs/FAT : 246
-Entrées root : 512
-→ Total : ~252,424 secteurs (~123 MB)
-```
-
-### Partition FAT32 (1 GB)
-```
-Type FAT : FAT32
-Octets/secteur : 512
-Secteurs/cluster : 8
-Secteurs réservés : 32
-Zones FAT : 2
-Secteurs/FAT : 1,952
-Entrées root : 0 (FAT32 n'a pas de root directory fixe)
-→ Total : ~2,000,000+ secteurs (~1 GB)
-```
-
-## 🎯 Cas d'Usage
-
-### Forensique Numérique
-- Localiser précisément des données sur un disque
-- Analyser la structure d'une partition récupérée
-- Identifier l'emplacement exact de fichiers
-
-### Récupération de Données
-- Calculer les offsets pour accéder directement aux données
-- Trouver des fichiers supprimés via leurs clusters
-- Reconstruire la structure de la partition
-
-### Analyse de Systèmes de Fichiers
-- Comprendre la structure FAT en détail
-- Visualiser l'organisation d'une partition
-- Étudier l'impact de différentes configurations
-
-### Éducation
-- Apprendre le fonctionnement des systèmes de fichiers FAT
-- Visualiser graphiquement la structure d'une partition
-- Expérimenter avec différentes configurations
-
-## 🔧 Développement
-
-### Ajouter de nouveaux tests
-
-Ajoutez vos tests dans `test_fatcalc.py` :
-
-```python
-def test_my_new_feature(self):
-    """Description du test."""
-    partition = FATPartition(...)
-    self.assertEqual(partition.my_value, expected_value)
-```
-
-### Contribuer
-
-1. Fork le projet
-2. Créez une branche pour votre fonctionnalité
-3. Ajoutez des tests
-4. Assurez-vous que tous les tests passent
-5. Soumettez une pull request
-
-## ⚠️ Notes Importantes
-
-- **Clusters 0 et 1** : Réservés dans la FAT, les clusters de données commencent à 2
-- **FAT32 Root Directory** : N'a pas de taille fixe (contrairement à FAT12/16)
-- **1 carré = 1 secteur** : Dans la cartographie GUI pour un maximum de détails
-- **Calcul automatique** : Le nombre total de secteurs est calculé automatiquement selon le type FAT
-
-## 📝 Licence
-
-Ce projet est à usage **éducatif et de recherche**.
+---
 
 ## 🙏 Crédits
 
 Développé avec :
 - Python 3
-- TTK Bootstrap (interface graphique moderne)
-- Tkinter (widgets graphiques)
+- PyQt6 (GUI framework)
+- Inspiré par des outils forensiques comme Autopsy, FTK Imager
 
 ---
 
-**Version** : 2.0
+**Version** : 1.0.0
 **Dernière mise à jour** : 2025
-**Support** : FAT12, FAT16, FAT32
+**Support** : FAT16 uniquement (pour l'instant)
