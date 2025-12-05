@@ -683,6 +683,10 @@ class FATSimulatorGUI(QMainWindow):
 
     def unified_cluster_search(self):
         """Recherche unifiée : charge chaîne + calcule offsets + mise en évidence"""
+        # Vider les résultats et le champ de recherche de texte
+        self.text_search_results.clear()
+        self.text_search_input.clear()
+
         if not self.parser or not self.fat_data:
             error_msg = "❌ Veuillez d'abord ouvrir une image .raw"
             self.chain_editor.set_search_result(error_msg)
@@ -791,6 +795,11 @@ class FATSimulatorGUI(QMainWindow):
 
         # Effacer les résultats précédents
         self.text_search_results.clear()
+
+        # Vider le champ de recherche de cluster et son résultat
+        self.search_cluster_input.clear()
+        self.search_result_label.setText("Entrez un numéro de cluster pour voir ses informations")
+        self.search_result_label.setStyleSheet("QLineEdit { color: #666; font-size: 9pt; background-color: transparent; border: none; }")
 
         try:
             bs = self.parser.boot_sector
