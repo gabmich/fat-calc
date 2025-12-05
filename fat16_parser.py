@@ -431,13 +431,20 @@ class FAT16Parser:
             raise ValueError("L'offset ne peut pas être négatif")
 
         # Se positionner à l'offset
+        print(f"[FAT16Parser] Seeking to offset 0x{offset:X}")
         self.file_handle.seek(offset)
 
+        current_pos = self.file_handle.tell()
+        print(f"[FAT16Parser] Current position: 0x{current_pos:X}")
+
         # Écrire les données
+        print(f"[FAT16Parser] Writing {len(data)} bytes: {data.hex()}")
         bytes_written = self.file_handle.write(data)
+        print(f"[FAT16Parser] Bytes written: {bytes_written}")
 
         # Forcer l'écriture sur le disque
         self.file_handle.flush()
+        print(f"[FAT16Parser] Flush complete")
 
         return bytes_written
 
@@ -451,11 +458,14 @@ class FAT16Parser:
 
         # Sauvegarder le chemin
         path = self.image_path
+        print(f"[FAT16Parser] Reopening file: {path}")
 
         # Fermer le fichier actuel
         self.close()
+        print(f"[FAT16Parser] File closed")
 
         # Rouvrir en mode lecture/écriture
         self.file_handle = open(path, 'r+b')
+        print(f"[FAT16Parser] File reopened in mode: {self.file_handle.mode}")
 
         return True

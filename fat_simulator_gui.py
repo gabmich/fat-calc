@@ -362,6 +362,7 @@ class FATSimulatorGUI(QMainWindow):
         self.text_search_results = QListWidget()
         self.text_search_results.setMaximumHeight(120)
         self.text_search_results.itemClicked.connect(self.on_text_search_result_clicked)
+        self.text_search_results.currentItemChanged.connect(self.on_text_search_result_changed)
         self.text_search_results.setStyleSheet("QListWidget { background-color: white; border: 1px solid #FFB74D; }")
         text_search_layout.addWidget(self.text_search_results)
 
@@ -491,6 +492,10 @@ class FATSimulatorGUI(QMainWindow):
             else:
                 # Essayer de lire directement comme une image de partition
                 self.parser.read_boot_sector(0)
+
+            # Configurer le hex viewer avec la taille des secteurs
+            if self.parser.boot_sector:
+                self.chain_hex_viewer.set_bytes_per_sector(self.parser.boot_sector.bytes_per_sector)
 
             # Lire la FAT
             self.fat_data = self.parser.read_fat(1)
@@ -858,8 +863,16 @@ class FATSimulatorGUI(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Erreur", f"Erreur lors de la recherche:\n{str(e)}")
 
+    def on_text_search_result_changed(self, current_item, previous_item):
+        """Callback quand la sélection d'un résultat change (clic ou navigation clavier)"""
+        if current_item:
+            self.on_text_search_result_clicked(current_item)
+
     def on_text_search_result_clicked(self, item):
         """Callback quand un résultat de recherche est cliqué"""
+        if not item:
+            return
+
         result = item.data(Qt.ItemDataRole.UserRole)
         if not result:
             return
@@ -951,11 +964,15 @@ class FATSimulatorGUI(QMainWindow):
             return
 
         # Parser les modifications du hex viewer
+        print("[DEBUG] Parsing modifications...")
         if not self.chain_hex_viewer.parse_and_apply_edits():
+            print("[DEBUG] Parsing failed")
             return  # Le parsing a échoué, le message d'erreur a déjà été affiché
 
         # Vérifier s'il y a des modifications
         modifications = self.chain_hex_viewer.get_modified_data()
+        print(f"[DEBUG] Found {len(modifications)} modifications: {modifications}")
+
         if not modifications:
             QMessageBox.information(self, "Aucune modification", "Aucune modification à enregistrer")
             return
@@ -980,20 +997,28 @@ class FATSimulatorGUI(QMainWindow):
 
         try:
             # Rouvrir le fichier en mode écriture
+            print("[DEBUG] Reopening file in write mode...")
             self.parser.reopen_writable()
+            print(f"[DEBUG] File reopened, mode: {self.parser.file_handle.mode}")
 
             # Écrire chaque modification
             total_written = 0
             for offset, byte_value in modifications.items():
-                self.parser.write_bytes_at_offset(offset, bytes([byte_value]))
+                print(f"[DEBUG] Writing byte 0x{byte_value:02X} at offset 0x{offset:X}")
+                bytes_written = self.parser.write_bytes_at_offset(offset, bytes([byte_value]))
+                print(f"[DEBUG] Bytes written: {bytes_written}")
                 total_written += 1
 
+            print(f"[DEBUG] Total written: {total_written}")
+
             # Fermer et rouvrir en mode lecture
+            print("[DEBUG] Closing and reopening in read mode...")
             self.parser.close()
             self.parser.open()
 
             # Relire le boot sector
             partition_offset = self.parser.current_partition_offset
+            print(f"[DEBUG] Re-reading boot sector at offset {partition_offset}")
             self.parser.read_boot_sector(partition_offset)
 
             # Effacer les modifications du hex viewer
@@ -1005,6 +1030,7 @@ class FATSimulatorGUI(QMainWindow):
             # Rafraîchir l'affichage
             self.chain_hex_viewer.set_data(self.chain_hex_viewer.data, self.chain_hex_viewer.current_offset)
 
+            print("[DEBUG] Save complete!")
             QMessageBox.information(
                 self,
                 "✅ Succès",
@@ -1013,6 +1039,9 @@ class FATSimulatorGUI(QMainWindow):
             )
 
         except Exception as e:
+            print(f"[DEBUG] Exception during save: {e}")
+            import traceback
+            traceback.print_exc()
             QMessageBox.critical(
                 self,
                 "Erreur",

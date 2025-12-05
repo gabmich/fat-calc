@@ -21,6 +21,7 @@ class HexViewer(QWidget):
         self.highlight_ranges = []  # Liste de tuples (start, length) à mettre en évidence
         self.edit_mode = False  # Mode édition activé ou non
         self.modified_data = {}  # Dictionnaire {offset: byte_value} pour les modifications
+        self.bytes_per_sector = 512  # Taille d'un secteur (par défaut 512 octets)
         self.setup_ui()
 
     def setup_ui(self):
@@ -103,8 +104,17 @@ class HexViewer(QWidget):
         html_lines.append(f'<span style="color: #0066CC; font-weight: bold;">{header}</span>')
         html_lines.append("-" * (10 + (self.bytes_per_line * 3) + 2 + self.bytes_per_line))
 
+        # Calculer les lignes par secteur
+        lines_per_sector = self.bytes_per_sector // self.bytes_per_line
+
         # Données
+        line_count = 0
         for i in range(0, len(data), self.bytes_per_line):
+            # Ajouter un séparateur de secteur si nécessaire
+            if line_count > 0 and line_count % lines_per_sector == 0:
+                separator = '<span style="color: #BBBBBB;">' + "· " * ((10 + (self.bytes_per_line * 3) + 2 + self.bytes_per_line) // 2) + '</span>'
+                html_lines.append(separator)
+
             line = data[i:i + self.bytes_per_line]
             address = offset + i
 
@@ -164,6 +174,7 @@ class HexViewer(QWidget):
 
             line_html += f'<span style="color: #009900;">{ascii_part}</span>'
             html_lines.append(line_html)
+            line_count += 1
 
         html_lines.append('</pre>')
         html = '\n'.join(html_lines)
@@ -181,8 +192,17 @@ class HexViewer(QWidget):
         lines.append(header)
         lines.append("-" * (10 + (self.bytes_per_line * 3) + 2 + self.bytes_per_line))
 
+        # Calculer les lignes par secteur
+        lines_per_sector = self.bytes_per_sector // self.bytes_per_line
+
         # Données
+        line_count = 0
         for i in range(0, len(data), self.bytes_per_line):
+            # Ajouter un séparateur de secteur si nécessaire
+            if line_count > 0 and line_count % lines_per_sector == 0:
+                separator = "· " * ((10 + (self.bytes_per_line * 3) + 2 + self.bytes_per_line) // 2)
+                lines.append(separator)
+
             line = data[i:i + self.bytes_per_line]
             address = offset + i
 
@@ -225,6 +245,7 @@ class HexViewer(QWidget):
 
             line_text += ascii_part
             lines.append(line_text)
+            line_count += 1
 
         text = '\n'.join(lines)
         self.text_edit.setPlainText(text)
@@ -242,8 +263,67 @@ class HexViewer(QWidget):
         # Rafraîchir l'affichage si des données sont présentes
         if self.data:
             self.set_data(self.data, self.current_offset)
+
+            # Si en mode édition, appliquer le highlighting avec QTextCharFormat
+            if self.edit_mode:
+                self._apply_edit_mode_highlighting()
+
             if scroll_to:
                 self.scroll_to_position(start)
+
+    def _apply_edit_mode_highlighting(self):
+        """Applique le highlighting en mode édition en utilisant QTextCharFormat"""
+        if not self.highlight_ranges or not self.edit_mode:
+            return
+
+        # Calculer le nombre de lignes d'en-tête (header + séparateur)
+        header_lines = 2
+
+        # Calculer les lignes par secteur pour tenir compte des séparateurs
+        lines_per_sector = self.bytes_per_sector // self.bytes_per_line
+
+        for start, length in self.highlight_ranges:
+            for byte_offset in range(start, start + length):
+                # Calculer la ligne et la colonne dans le hex viewer
+                line_in_data = byte_offset // self.bytes_per_line
+                byte_in_line = byte_offset % self.bytes_per_line
+
+                # Ajouter les lignes de séparateur de secteur
+                separator_lines = line_in_data // lines_per_sector
+                actual_line = header_lines + line_in_data + separator_lines
+
+                # Position dans la ligne: offset(10) + 2 espaces + (byte_in_line * 3)
+                hex_col_start = 10 + (byte_in_line * 3)
+                hex_col_end = hex_col_start + 2
+
+                # Position ASCII: offset(10) + 2 + hex_bytes(bytes_per_line*3) + 2 + byte_in_line
+                ascii_col = 10 + (self.bytes_per_line * 3) + 2 + byte_in_line
+
+                # Appliquer le format de highlighting aux octets hex
+                cursor = self.text_edit.textCursor()
+                cursor.movePosition(QTextCursor.MoveOperation.Start)
+
+                # Se déplacer à la ligne
+                for _ in range(actual_line):
+                    cursor.movePosition(QTextCursor.MoveOperation.Down)
+
+                # Se déplacer à la colonne hex
+                cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.MoveAnchor, hex_col_start)
+                cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, 2)
+
+                # Appliquer le format
+                fmt = QTextCharFormat()
+                fmt.setBackground(QColor("#FFFF00"))
+                fmt.setFontWeight(700)  # Bold
+                cursor.setCharFormat(fmt)
+
+                # Faire pareil pour le caractère ASCII
+                cursor.movePosition(QTextCursor.MoveOperation.Start)
+                for _ in range(actual_line):
+                    cursor.movePosition(QTextCursor.MoveOperation.Down)
+                cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.MoveAnchor, ascii_col)
+                cursor.movePosition(QTextCursor.MoveOperation.Right, QTextCursor.MoveMode.KeepAnchor, 1)
+                cursor.setCharFormat(fmt)
 
     def scroll_to_position(self, byte_position: int):
         """
@@ -300,6 +380,14 @@ class HexViewer(QWidget):
             offset = 0  # On pourrait stocker l'offset aussi si nécessaire
             self.set_data(current_data, offset)
 
+    def set_bytes_per_sector(self, bytes_per_sector: int):
+        """
+        Définit la taille d'un secteur pour les séparateurs
+        """
+        self.bytes_per_sector = bytes_per_sector
+        if self.data:
+            self.set_data(self.data, self.current_offset)
+
     def toggle_edit_mode(self, state):
         """Active/désactive le mode édition avec un avertissement"""
         if state == Qt.CheckState.Checked.value:
@@ -351,19 +439,23 @@ class HexViewer(QWidget):
         Retourne True si le parsing a réussi, False sinon
         """
         if not self.edit_mode:
+            print("[HexViewer] Not in edit mode, skipping parse")
             return True
 
         try:
             text = self.text_edit.toPlainText()
             lines = text.split('\n')
+            print(f"[HexViewer] Parsing {len(lines)} lines")
 
             # Ignorer les 2 premières lignes (header et séparateur)
             if len(lines) < 3:
+                print("[HexViewer] Not enough lines")
                 return True
 
             data_lines = lines[2:]
+            modifications_found = 0
 
-            for line in data_lines:
+            for line_num, line in enumerate(data_lines):
                 if not line.strip():
                     continue
 
@@ -398,18 +490,26 @@ class HexViewer(QWidget):
 
                             # Si différent, enregistrer la modification
                             if byte_value != original_byte:
+                                print(f"[HexViewer] Modification detected at offset 0x{absolute_offset:X}: {original_byte:02X} -> {byte_value:02X}")
                                 self.modified_data[absolute_offset] = byte_value
+                                modifications_found += 1
                             elif absolute_offset in self.modified_data and byte_value == original_byte:
                                 # L'utilisateur a remis la valeur originale
+                                print(f"[HexViewer] Modification removed at offset 0x{absolute_offset:X}")
                                 del self.modified_data[absolute_offset]
 
                 except (ValueError, IndexError) as e:
                     # Erreur de parsing, ignorer cette ligne
+                    print(f"[HexViewer] Parse error on line {line_num}: {e}")
                     continue
 
+            print(f"[HexViewer] Parse complete: {modifications_found} new modifications, {len(self.modified_data)} total")
             return True
 
         except Exception as e:
+            print(f"[HexViewer] Parse exception: {e}")
+            import traceback
+            traceback.print_exc()
             QMessageBox.critical(
                 self,
                 "Erreur de parsing",
