@@ -407,3 +407,55 @@ class FAT16Parser:
             'volume_id': f"0x{bs.volume_id:08X}",
             'detected_fat_type': self.fat_type or 'Unknown',  # Type détecté automatiquement
         }
+
+    def write_bytes_at_offset(self, offset: int, data: bytes):
+        """
+        Écrit des octets à un offset absolu dans le fichier image
+
+        Args:
+            offset: Offset absolu dans le fichier (en octets)
+            data: Données à écrire
+
+        Raises:
+            RuntimeError: Si le fichier n'est pas ouvert
+            ValueError: Si l'offset est invalide
+        """
+        if not self.file_handle:
+            raise RuntimeError("Fichier image non ouvert")
+
+        # Vérifier que le fichier est ouvert en mode lecture/écriture
+        if self.file_handle.mode == 'rb':
+            raise RuntimeError("Le fichier doit être ouvert en mode lecture/écriture (r+b)")
+
+        if offset < 0:
+            raise ValueError("L'offset ne peut pas être négatif")
+
+        # Se positionner à l'offset
+        self.file_handle.seek(offset)
+
+        # Écrire les données
+        bytes_written = self.file_handle.write(data)
+
+        # Forcer l'écriture sur le disque
+        self.file_handle.flush()
+
+        return bytes_written
+
+    def reopen_writable(self):
+        """
+        Ferme et rouvre le fichier en mode lecture/écriture
+        ATTENTION: Cette opération permet de modifier le fichier image
+        """
+        if not self.file_handle:
+            raise RuntimeError("Aucun fichier n'est ouvert")
+
+        # Sauvegarder le chemin
+        path = self.image_path
+
+        # Fermer le fichier actuel
+        self.close()
+
+        # Rouvrir en mode lecture/écriture
+        self.file_handle = open(path, 'r+b')
+
+        return True

@@ -262,6 +262,13 @@ class FATSimulatorGUI(QMainWindow):
         self.open_button.setMaximumHeight(30)  # Limiter la hauteur
         toolbar_layout.addWidget(self.open_button)
 
+        self.save_modifications_button = QPushButton("💾 Enregistrer les Modifications")
+        self.save_modifications_button.clicked.connect(self.save_hex_modifications)
+        self.save_modifications_button.setMaximumHeight(30)
+        self.save_modifications_button.setEnabled(False)  # Désactivé par défaut
+        self.save_modifications_button.setStyleSheet("QPushButton:enabled { background-color: #FF9800; color: white; font-weight: bold; }")
+        toolbar_layout.addWidget(self.save_modifications_button)
+
         self.status_label = QLabel("Aucune image chargée")
         self.status_label.setStyleSheet("font-weight: bold;")  # Retirer le padding
         self.status_label.setMaximumHeight(30)
@@ -397,6 +404,8 @@ class FATSimulatorGUI(QMainWindow):
 
         self.chain_hex_viewer = HexViewer(bytes_per_line=8)
         self.chain_hex_viewer.set_title("Sélectionnez un cluster pour voir son contenu")
+        # Connecter le signal de changement du mode édition pour activer/désactiver le bouton de sauvegarde
+        self.chain_hex_viewer.edit_checkbox.stateChanged.connect(self.on_edit_mode_changed)
         hex_layout.addWidget(self.chain_hex_viewer)
 
         hex_group.setLayout(hex_layout)
@@ -573,6 +582,11 @@ class FATSimulatorGUI(QMainWindow):
         """Callback quand le nombre d'octets par ligne change"""
         bytes_per_line = int(value)
         self.chain_hex_viewer.set_bytes_per_line(bytes_per_line)
+
+    def on_edit_mode_changed(self, state):
+        """Callback quand le mode édition change"""
+        # Activer le bouton de sauvegarde seulement si le mode édition est activé
+        self.save_modifications_button.setEnabled(self.chain_hex_viewer.edit_mode)
 
     def on_chain_cluster_selected(self, cluster_number: int):
         """Callback quand un cluster est sélectionné dans la chaîne"""
@@ -929,6 +943,82 @@ class FATSimulatorGUI(QMainWindow):
         self.text_search_button.setEnabled(enabled)
         self.text_search_input.setEnabled(enabled)
         self.case_sensitive_checkbox.setEnabled(enabled)
+
+    def save_hex_modifications(self):
+        """Enregistre les modifications hexadécimales dans le fichier image"""
+        if not self.parser:
+            QMessageBox.warning(self, "Erreur", "Aucune image n'est chargée")
+            return
+
+        # Parser les modifications du hex viewer
+        if not self.chain_hex_viewer.parse_and_apply_edits():
+            return  # Le parsing a échoué, le message d'erreur a déjà été affiché
+
+        # Vérifier s'il y a des modifications
+        modifications = self.chain_hex_viewer.get_modified_data()
+        if not modifications:
+            QMessageBox.information(self, "Aucune modification", "Aucune modification à enregistrer")
+            return
+
+        # Afficher un dialogue de confirmation
+        reply = QMessageBox.warning(
+            self,
+            "⚠️ ATTENTION - Sauvegarde des modifications",
+            f"Vous êtes sur le point d'écrire {len(modifications)} octets modifiés dans le fichier image.\n\n"
+            "AVERTISSEMENT:\n"
+            "• Cette opération va MODIFIER DIRECTEMENT le fichier image\n"
+            "• Les modifications sont IRRÉVERSIBLES\n"
+            "• Le système de fichiers peut être CORROMPU si les modifications sont incorrectes\n"
+            "• Il est FORTEMENT RECOMMANDÉ d'avoir une sauvegarde\n\n"
+            "Voulez-vous vraiment continuer ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        try:
+            # Rouvrir le fichier en mode écriture
+            self.parser.reopen_writable()
+
+            # Écrire chaque modification
+            total_written = 0
+            for offset, byte_value in modifications.items():
+                self.parser.write_bytes_at_offset(offset, bytes([byte_value]))
+                total_written += 1
+
+            # Fermer et rouvrir en mode lecture
+            self.parser.close()
+            self.parser.open()
+
+            # Relire le boot sector
+            partition_offset = self.parser.current_partition_offset
+            self.parser.read_boot_sector(partition_offset)
+
+            # Effacer les modifications du hex viewer
+            self.chain_hex_viewer.clear_modifications()
+
+            # Désactiver le bouton de sauvegarde
+            self.save_modifications_button.setEnabled(False)
+
+            # Rafraîchir l'affichage
+            self.chain_hex_viewer.set_data(self.chain_hex_viewer.data, self.chain_hex_viewer.current_offset)
+
+            QMessageBox.information(
+                self,
+                "✅ Succès",
+                f"{total_written} octets ont été écrits avec succès dans le fichier image.\n\n"
+                "Le fichier a été mis à jour."
+            )
+
+        except Exception as e:
+            QMessageBox.critical(
+                self,
+                "Erreur",
+                f"Erreur lors de l'écriture des modifications:\n{str(e)}\n\n"
+                "Le fichier peut être dans un état incohérent."
+            )
 
     def closeEvent(self, event):
         """Gère la fermeture de l'application"""
