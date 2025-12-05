@@ -34,11 +34,52 @@ class PartitionMapWidget(QWidget):
         self.sector_positions = {}  # Mapping secteur -> (x, y)
         self.x_offset = 10
         self.y_offset = 10
+        self.empty_sectors = set()  # Cache des secteurs vides (remplis de 0x00)
 
     def set_parser(self, parser: FAT16Parser):
         """Définit le parser FAT16 à visualiser"""
         self.parser = parser
+        # Scanner les secteurs vides (une seule fois au chargement)
+        self._scan_empty_sectors()
         self.update()
+
+    def _scan_empty_sectors(self):
+        """Scanne les secteurs de données pour identifier ceux qui sont vides (remplis de 0x00)"""
+        if not self.parser or not self.parser.boot_sector:
+            return
+
+        self.empty_sectors.clear()
+        bs = self.parser.boot_sector
+
+        # Scanner uniquement les secteurs de données
+        first_data_sector = bs.first_data_sector
+        total_sectors = min(bs.total_sectors, 10000)  # Limité comme dans paintEvent
+
+        print(f"[PartitionMap] Scanning empty sectors from {first_data_sector} to {total_sectors}...")
+        start_time = __import__('time').time()
+
+        scanned_count = 0
+        empty_count = 0
+
+        for sector_num in range(first_data_sector, total_sectors):
+            try:
+                # Lire le secteur
+                sector_data = self.parser.read_sector(sector_num)
+
+                # Vérifier si tous les octets sont à 0x00
+                if all(b == 0x00 for b in sector_data):
+                    self.empty_sectors.add(sector_num)
+                    empty_count += 1
+
+                scanned_count += 1
+
+            except Exception as e:
+                # En cas d'erreur, ignorer ce secteur
+                print(f"[PartitionMap] Error reading sector {sector_num}: {e}")
+                continue
+
+        elapsed = (__import__('time').time() - start_time) * 1000  # en ms
+        print(f"[PartitionMap] Scan complete: {scanned_count} sectors scanned, {empty_count} empty sectors found in {elapsed:.1f} ms")
 
     def calculate_squares_per_row(self):
         """Calcule le nombre de carrés par ligne selon la largeur disponible"""
@@ -98,7 +139,8 @@ class PartitionMapWidget(QWidget):
             'fat1': QColor("#90EE90"),      # Vert clair
             'fat2': QColor("#006400"),      # Vert foncé
             'root': QColor("#FFA500"),      # Orange
-            'data': QColor("#4169E1")       # Bleu royal
+            'data': QColor("#4169E1"),      # Bleu royal (données pleines)
+            'data_empty': QColor("#87CEEB") # Bleu clair (données vides)
         }
 
         # Effacer le mapping des positions
@@ -117,7 +159,11 @@ class PartitionMapWidget(QWidget):
             elif current_sector < bs.first_data_sector:
                 color = colors['root']
             else:
-                color = colors['data']
+                # Zone de données : différencier vide vs plein
+                if current_sector in self.empty_sectors:
+                    color = colors['data_empty']  # Bleu clair pour secteurs vides
+                else:
+                    color = colors['data']  # Bleu foncé pour secteurs pleins
 
             # Stocker la position du secteur
             self.sector_positions[current_sector] = (current_x, current_y)
@@ -196,7 +242,8 @@ class PartitionMapWidget(QWidget):
             ('FAT1', colors['fat1']),
             ('FAT2', colors['fat2']),
             ('Root', colors['root']),
-            ('Data', colors['data'])
+            ('Data (full)', colors['data']),
+            ('Data (empty)', colors['data_empty'])
         ]
 
         for label, color in legends:
@@ -207,7 +254,7 @@ class PartitionMapWidget(QWidget):
 
             # Label
             painter.drawText(legend_x + 20, legend_y + 12, label)
-            legend_x += 100
+            legend_x += 110  # Augmenté pour faire de la place pour les labels plus longs
 
         painter.end()
 
