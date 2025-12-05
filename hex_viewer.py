@@ -4,8 +4,147 @@ Widget personnalisé pour afficher des données en hexadécimal
 
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QTextEdit, QLabel,
                               QHBoxLayout, QCheckBox, QMessageBox)
-from PyQt6.QtGui import QFont, QTextCursor, QTextCharFormat, QColor
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtGui import QFont, QTextCursor, QTextCharFormat, QColor, QKeyEvent
+from PyQt6.QtCore import Qt, pyqtSignal, QObject, QEvent
+
+
+class HexEditEventFilter(QObject):
+    """Event filter pour contrôler l'édition hexadécimale"""
+
+    def __init__(self, hex_viewer):
+        super().__init__()
+        self.hex_viewer = hex_viewer
+
+    def eventFilter(self, obj, event):
+        """Filtre les événements pour valider l'édition"""
+        if event.type() == QEvent.Type.KeyPress:
+            key = event.key()
+            text = event.text()
+
+            # Autoriser les touches de navigation
+            navigation_keys = [
+                Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Up, Qt.Key.Key_Down,
+                Qt.Key.Key_Home, Qt.Key.Key_End, Qt.Key.Key_PageUp, Qt.Key.Key_PageDown,
+                Qt.Key.Key_Tab, Qt.Key.Key_Backtab
+            ]
+
+            if key in navigation_keys:
+                return False  # Laisser passer
+
+            # Autoriser Ctrl+C (copier), mais bloquer Ctrl+V (coller) et Ctrl+X (couper)
+            if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+                if key == Qt.Key.Key_C:
+                    return False  # Autoriser copier
+                else:
+                    return True  # Bloquer tout le reste (coller, couper, etc.)
+
+            # Bloquer les touches d'insertion/suppression
+            if key in [Qt.Key.Key_Insert, Qt.Key.Key_Delete, Qt.Key.Key_Backspace]:
+                return True  # Bloquer
+
+            # Vérifier si c'est un caractère hexadécimal valide
+            if text and len(text) == 1:
+                char = text.upper()
+                if char in '0123456789ABCDEF':
+                    # Vérifier que le curseur est sur une position d'octet hex valide
+                    cursor = self.hex_viewer.text_edit.textCursor()
+                    position = cursor.position()
+
+                    byte_info = self._get_byte_at_cursor(cursor)
+                    if byte_info:
+                        byte_offset, is_high_nibble, current_byte = byte_info
+
+                        # Calculer la nouvelle valeur de l'octet
+                        hex_digit = int(char, 16)
+                        if is_high_nibble:
+                            # Modifier le nibble haut (4 bits de poids fort)
+                            new_byte = (hex_digit << 4) | (current_byte & 0x0F)
+                        else:
+                            # Modifier le nibble bas (4 bits de poids faible)
+                            new_byte = (current_byte & 0xF0) | hex_digit
+
+                        # Calculer l'offset absolu
+                        absolute_offset = self.hex_viewer.current_offset + byte_offset
+
+                        # Enregistrer la modification
+                        self.hex_viewer.modified_data[absolute_offset] = new_byte
+                        print(f"[HexEditEventFilter] Modified byte at 0x{absolute_offset:X}: 0x{current_byte:02X} -> 0x{new_byte:02X}")
+
+                        # Remplacer le caractère à la position actuelle (overwrite mode)
+                        cursor.deleteChar()  # Supprimer le caractère actuel
+                        cursor.insertText(char)  # Insérer le nouveau caractère
+                        # Le curseur reste à la même position (pas d'avancement automatique)
+                        return True  # Événement traité
+                    else:
+                        return True  # Position invalide, bloquer
+
+            # Bloquer tous les autres caractères
+            return True
+
+        return False  # Laisser passer les autres événements
+
+    def _get_byte_at_cursor(self, cursor):
+        """
+        Retourne les informations sur l'octet à la position du curseur
+        Returns: (byte_offset, is_high_nibble, current_byte) ou None si invalide
+        """
+        # Obtenir la position dans la ligne
+        block = cursor.block()
+        position_in_block = cursor.positionInBlock()
+        block_number = cursor.blockNumber()
+
+        # Les 2 premières lignes sont header et séparateur
+        if block_number < 2:
+            return None
+
+        # Vérifier si c'est une ligne séparatrice (ligne de points)
+        line_text = block.text()
+        if line_text.strip().startswith('·'):
+            return None
+
+        # Calculer le nombre de lignes de séparateur avant cette ligne
+        lines_per_sector = self.hex_viewer.bytes_per_sector // self.hex_viewer.bytes_per_line
+        data_line_number = block_number - 2  # Enlever header + séparateur initial
+
+        # Compter les lignes de séparateur
+        separator_lines_before = data_line_number // (lines_per_sector + 1)
+        actual_data_line = data_line_number - separator_lines_before
+
+        # Position de la zone hex: offset (8 chars) + 2 espaces = 10
+        hex_zone_start = 10
+        hex_zone_end = hex_zone_start + (self.hex_viewer.bytes_per_line * 3) - 1
+
+        # Vérifier si on est dans la zone hex
+        if position_in_block < hex_zone_start or position_in_block > hex_zone_end:
+            return None
+
+        # Vérifier si on est sur un caractère hex (pas sur un espace)
+        relative_pos = position_in_block - hex_zone_start
+        # Les octets sont à : 0-1, 3-4, 6-7, 9-10, etc. (espaces aux positions 2, 5, 8, 11, etc.)
+        if relative_pos % 3 == 2:  # Position d'espace
+            return None
+
+        # Calculer quel octet et quel nibble
+        byte_index = relative_pos // 3
+        nibble_index = relative_pos % 3  # 0 ou 1
+        is_high_nibble = (nibble_index == 0)
+
+        # Calculer l'offset de l'octet dans les données
+        byte_offset = actual_data_line * self.hex_viewer.bytes_per_line + byte_index
+
+        # Vérifier que l'offset est valide
+        if byte_offset >= len(self.hex_viewer.data):
+            return None
+
+        # Récupérer la valeur actuelle de l'octet (peut être modifié)
+        absolute_offset = self.hex_viewer.current_offset + byte_offset
+        if absolute_offset in self.hex_viewer.modified_data:
+            current_byte = self.hex_viewer.modified_data[absolute_offset]
+        else:
+            current_byte = self.hex_viewer.data[byte_offset]
+
+        return (byte_offset, is_high_nibble, current_byte)
+
 
 
 class HexViewer(QWidget):
@@ -22,6 +161,7 @@ class HexViewer(QWidget):
         self.edit_mode = False  # Mode édition activé ou non
         self.modified_data = {}  # Dictionnaire {offset: byte_value} pour les modifications
         self.bytes_per_sector = 512  # Taille d'un secteur (par défaut 512 octets)
+        self.event_filter = HexEditEventFilter(self)  # Event filter pour le mode édition
         self.setup_ui()
 
     def setup_ui(self):
@@ -411,6 +551,9 @@ class HexViewer(QWidget):
                 self.text_edit.setReadOnly(False)
                 self.text_edit.setStyleSheet("QTextEdit { background-color: #FFF3E0; }")
                 self.title_label.setText(self.title_label.text() + " [MODE ÉDITION]")
+                # Installer l'event filter pour contrôler l'édition
+                self.text_edit.installEventFilter(self.event_filter)
+                print("[HexViewer] Event filter installed for edit mode")
             else:
                 # L'utilisateur a annulé, décocher la checkbox
                 self.edit_checkbox.setChecked(False)
@@ -420,6 +563,9 @@ class HexViewer(QWidget):
             self.text_edit.setStyleSheet("")
             title = self.title_label.text().replace(" [MODE ÉDITION]", "")
             self.title_label.setText(title)
+            # Désinstaller l'event filter
+            self.text_edit.removeEventFilter(self.event_filter)
+            print("[HexViewer] Event filter removed")
 
     def get_modified_data(self):
         """Retourne les données modifiées sous forme de dictionnaire {absolute_offset: byte_value}"""
