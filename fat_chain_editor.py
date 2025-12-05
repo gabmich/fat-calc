@@ -1,82 +1,17 @@
 """
-Widget pour visualiser et éditer les chaînes FAT avec drag & drop positionnel
+Widget pour visualiser et éditer les chaînes FAT
 """
 
 from typing import List, Optional, Callable
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton,
                               QLabel, QScrollArea, QFrame, QLineEdit, QMessageBox,
                               QMenu)
-from PyQt6.QtCore import Qt, pyqtSignal, QMimeData, QPoint
-from PyQt6.QtGui import QDrag, QPainter, QColor, QPen, QAction
-
-
-class DropZone(QLabel):
-    """Zone de drop entre deux clusters"""
-
-    drop_occurred = pyqtSignal(int, int)  # (position, cluster_number)
-
-    def __init__(self, position: int, parent=None):
-        super().__init__(parent)
-        self.position = position
-        self.is_dragging_over = False
-        self.setup_ui()
-
-    def setup_ui(self):
-        """Configure l'apparence de la zone de drop"""
-        self.setFixedSize(40, 50)
-        self.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.setAcceptDrops(True)
-        self.update_display()
-
-    def update_display(self):
-        """Met à jour l'affichage de la zone"""
-        if self.is_dragging_over:
-            self.setStyleSheet("""
-                QLabel {
-                    background-color: #4C6EF5;
-                    border: 2px dashed #1C7ED6;
-                    border-radius: 5px;
-                }
-            """)
-            self.setText("⬇\n▼")
-        else:
-            self.setStyleSheet("""
-                QLabel {
-                    background-color: transparent;
-                    border: 2px dashed #CED4DA;
-                    border-radius: 5px;
-                }
-            """)
-            self.setText("+")
-
-    def dragEnterEvent(self, event):
-        """Accepte le drag"""
-        if event.mimeData().hasText():
-            self.is_dragging_over = True
-            self.update_display()
-            event.acceptProposedAction()
-            print(f"[DropZone {self.position}] Drag entered")
-
-    def dragLeaveEvent(self, event):
-        """Le drag quitte la zone"""
-        self.is_dragging_over = False
-        self.update_display()
-        print(f"[DropZone {self.position}] Drag left")
-
-    def dropEvent(self, event):
-        """Gère le drop"""
-        if event.mimeData().hasText():
-            cluster_number = int(event.mimeData().text())
-            print(f"[DropZone {self.position}] Dropped cluster {cluster_number}")
-            self.drop_occurred.emit(self.position, cluster_number)
-            event.acceptProposedAction()
-
-        self.is_dragging_over = False
-        self.update_display()
+from PyQt6.QtCore import Qt, pyqtSignal, QPoint
+from PyQt6.QtGui import QPainter, QColor, QPen, QAction
 
 
 class ClusterBlock(QLabel):
-    """Widget représentant un cluster dans une chaîne FAT (draggable)"""
+    """Widget représentant un cluster dans une chaîne FAT"""
 
     clicked = pyqtSignal(int)
     right_clicked = pyqtSignal(int, object)  # cluster_number, QPoint
@@ -164,44 +99,10 @@ class ClusterBlock(QLabel):
         self.update_display()
 
     def mousePressEvent(self, event):
-        """Gère le début du drag ou le clic"""
+        """Gère le clic sur le cluster"""
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.cluster_number)
             print(f"[ClusterBlock] Clicked cluster {self.cluster_number}")
-
-            # Attendre un peu pour distinguer clic de drag
-            self.drag_start_position = event.position().toPoint()
-
-    def mouseMoveEvent(self, event):
-        """Démarre le drag si la souris a bougé suffisamment"""
-        if not (event.buttons() & Qt.MouseButton.LeftButton):
-            return
-
-        if not hasattr(self, 'drag_start_position'):
-            return
-
-        # Vérifier la distance de déplacement
-        if (event.position().toPoint() - self.drag_start_position).manhattanLength() < 10:
-            return
-
-        # Créer un drag
-        drag = QDrag(self)
-        mime_data = QMimeData()
-        # Stocker à la fois le cluster number et sa position dans la chaîne
-        mime_data.setText(str(self.cluster_number))
-        mime_data.setProperty("source_position", self.position)
-        drag.setMimeData(mime_data)
-
-        # Créer une pixmap pour le drag
-        pixmap = self.grab()
-        drag.setPixmap(pixmap)
-        drag.setHotSpot(event.position().toPoint())
-
-        print(f"[ClusterBlock] Starting drag for cluster {self.cluster_number}")
-
-        # Exécuter le drag
-        result = drag.exec(Qt.DropAction.MoveAction | Qt.DropAction.CopyAction)
-        print(f"[ClusterBlock] Drag result: {result}")
 
     def _show_context_menu(self, pos):
         """Affiche le menu contextuel"""
@@ -209,7 +110,7 @@ class ClusterBlock(QLabel):
 
 
 class FATChainEditor(QWidget):
-    """Widget pour éditer une chaîne FAT avec drag & drop positionnel"""
+    """Widget pour éditer une chaîne FAT"""
 
     chain_modified = pyqtSignal(list)  # Nouvelle chaîne de clusters
     cluster_selected = pyqtSignal(int)  # Cluster sélectionné
@@ -219,7 +120,6 @@ class FATChainEditor(QWidget):
         super().__init__(parent)
         self.chain: List[int] = []
         self.cluster_blocks: List[ClusterBlock] = []
-        self.drop_zones: List[DropZone] = []
         self.on_cluster_click: Optional[Callable] = None
         self.setup_ui()
 
@@ -266,7 +166,6 @@ class FATChainEditor(QWidget):
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
         self.chain_container = QWidget()
-        self.chain_container.setAcceptDrops(True)
         self.chain_layout = QHBoxLayout()
         self.chain_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.chain_layout.setContentsMargins(10, 10, 10, 10)
@@ -274,9 +173,6 @@ class FATChainEditor(QWidget):
 
         scroll.setWidget(self.chain_container)
         layout.addWidget(scroll)
-
-        # Permettre le drop sur le widget principal aussi
-        self.setAcceptDrops(True)
 
         # Informations sur la chaîne
         self.info_label = QLabel("Aucune chaîne chargée")
@@ -314,28 +210,19 @@ class FATChainEditor(QWidget):
                 # Sinon c'est un spacer ou autre layout item, on l'ignore
 
         self.cluster_blocks.clear()
-        self.drop_zones.clear()
 
         if not self.chain:
-            # Afficher une zone de drop initiale
-            initial_zone = DropZone(0)
-            initial_zone.drop_occurred.connect(self._on_drop)
-            initial_zone.setText("⬇\nDéposez ici")
-            initial_zone.setFixedSize(120, 60)
-            self.chain_layout.addWidget(initial_zone)
-            self.drop_zones.append(initial_zone)
+            # Afficher un message pour chaîne vide
+            empty_label = QLabel("Chaîne vide - Cliquez sur 'Ajouter Cluster' pour commencer")
+            empty_label.setStyleSheet("padding: 20px; color: #999; font-style: italic;")
+            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.chain_layout.addWidget(empty_label)
             self.chain_layout.addStretch()
-            self.info_label.setText("Chaîne vide - Glissez un cluster depuis la table FAT pour commencer")
+            self.info_label.setText("Chaîne vide")
             return
 
-        # Créer les widgets pour chaque cluster avec zones de drop entre eux
+        # Créer les widgets pour chaque cluster
         for i, cluster in enumerate(self.chain):
-            # Zone de drop AVANT le cluster
-            drop_zone = DropZone(i)
-            drop_zone.drop_occurred.connect(self._on_drop)
-            self.chain_layout.addWidget(drop_zone)
-            self.drop_zones.append(drop_zone)
-
             # Vérifier si c'est le dernier cluster
             is_last = (i == len(self.chain) - 1)
 
@@ -353,12 +240,6 @@ class FATChainEditor(QWidget):
                 arrow.setStyleSheet("font-size: 20pt; color: #495057; padding: 0 5px;")
                 arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.chain_layout.addWidget(arrow)
-
-        # Zone de drop APRÈS le dernier cluster
-        final_zone = DropZone(len(self.chain))
-        final_zone.drop_occurred.connect(self._on_drop)
-        self.chain_layout.addWidget(final_zone)
-        self.drop_zones.append(final_zone)
 
         # Ajouter un stretch à la fin
         self.chain_layout.addStretch()
@@ -432,10 +313,6 @@ class FATChainEditor(QWidget):
                 f"Tous les clusters suivants ont été supprimés."
             )
 
-    def _on_drop(self, position: int, cluster_number: int):
-        """Gère le drop d'un cluster à une position spécifique"""
-        self.insert_cluster_at(position, cluster_number)
-
     def add_cluster(self, cluster_number: int):
         """Ajoute un cluster à la fin de la chaîne"""
         self.chain.append(cluster_number)
@@ -486,29 +363,3 @@ class FATChainEditor(QWidget):
                 f"Le cluster {removed} a été supprimé de la position {index}"
             )
 
-    def insert_cluster_at(self, index: int, cluster_number: int):
-        """Insère un cluster à l'index donné"""
-        if 0 <= index <= len(self.chain):
-            self.chain.insert(index, cluster_number)
-            self.refresh_display()
-            self.chain_modified.emit(self.chain)
-
-    def dragEnterEvent(self, event):
-        """Accepte les événements de drag au niveau du widget"""
-        if event.mimeData().hasText():
-            event.acceptProposedAction()
-            print(f"[ChainEditor] Drag entered with cluster: {event.mimeData().text()}")
-
-    def dragMoveEvent(self, event):
-        """Accepte les mouvements de drag"""
-        if event.mimeData().hasText():
-            event.acceptProposedAction()
-
-    def dropEvent(self, event):
-        """Gère le drop au niveau du widget (fallback)"""
-        if event.mimeData().hasText():
-            cluster_number = int(event.mimeData().text())
-            print(f"[ChainEditor] Dropped cluster {cluster_number} at end (fallback)")
-            # Ajouter à la fin si on ne trouve pas de position spécifique
-            self.add_cluster(cluster_number)
-            event.acceptProposedAction()

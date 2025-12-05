@@ -290,7 +290,7 @@ class FATSimulatorGUI(QMainWindow):
         info_layout.addWidget(self.info_text)
 
         info_group.setLayout(info_layout)
-        left_layout.addWidget(info_group, 1)  # Stretch factor = 1
+        left_layout.addWidget(info_group, 2)  # Stretch factor = 2 (plus d'espace)
 
         # Section de recherche de cluster unifiée (compacte)
         search_frame = QFrame()
@@ -336,7 +336,7 @@ class FATSimulatorGUI(QMainWindow):
         chain_group_layout.addWidget(self.chain_editor)
 
         chain_group.setLayout(chain_group_layout)
-        left_layout.addWidget(chain_group, 2)  # Stretch factor = 2 (plus d'espace que info)
+        left_layout.addWidget(chain_group, 1)  # Stretch factor = 1 (1/3 de l'espace)
 
         left_panel.setLayout(left_layout)
         main_splitter.addWidget(left_panel)
