@@ -512,11 +512,13 @@ class FATSimulatorGUI(QMainWindow):
         info = self.parser.get_info_dict()
         bs = self.parser.boot_sector
 
+        detected_type = info.get('detected_fat_type', 'Unknown')
         text = "=" * 60 + "\n"
-        text += "INFORMATIONS DE LA PARTITION FAT16\n"
+        text += f"INFORMATIONS DE LA PARTITION {detected_type}\n"
         text += "=" * 60 + "\n\n"
 
-        text += f"Type de système:           {info['fs_type']}\n"
+        text += f"Type détecté:              {detected_type}\n"
+        text += f"Type de système (boot):    {info['fs_type']}\n"
         text += f"Label du volume:           {info['volume_label']}\n"
         text += f"ID du volume:              {info['volume_id']}\n\n"
 
@@ -741,7 +743,38 @@ class FATSimulatorGUI(QMainWindow):
             results = []
             max_results = 100  # Limiter à 100 résultats
 
-            # Parcourir tous les clusters de données
+            # 1. D'abord chercher dans le Root Directory (où sont les noms de fichiers)
+            try:
+                root_data = self.parser.read_root_directory()
+                root_offset = (bs.reserved_sectors + bs.num_fats * bs.sectors_per_fat) * bs.bytes_per_sector
+
+                search_root_data = root_data if case_sensitive else root_data.lower()
+                offset = 0
+                while True and len(results) < max_results:
+                    pos = search_root_data.find(search_bytes, offset)
+                    if pos == -1:
+                        break
+
+                    absolute_offset = root_offset + pos
+                    context_start = max(0, pos - 20)
+                    context_end = min(len(root_data), pos + len(search_bytes) + 20)
+                    context = root_data[context_start:context_end]
+                    context_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in context)
+
+                    results.append({
+                        'cluster': 'ROOT',  # Marquer comme étant dans le Root Directory
+                        'offset': absolute_offset,
+                        'position_in_cluster': pos,
+                        'match_length': len(search_bytes),
+                        'context': context_str,
+                        'root_data': root_data  # Stocker les données du root pour affichage
+                    })
+
+                    offset = pos + 1
+            except Exception as e:
+                print(f"Erreur lors de la recherche dans le Root Directory: {e}")
+
+            # 2. Parcourir tous les clusters de données
             total_clusters = bs.total_clusters
             for cluster_num in range(2, total_clusters + 2):
                 if len(results) >= max_results:
@@ -822,39 +855,68 @@ class FATSimulatorGUI(QMainWindow):
             cluster_num = result['cluster']
             absolute_offset = result['offset']
 
-            # 1. Charger la chaîne FAT pour ce cluster
-            chain = self.parser.parse_fat_chain(self.fat_data, cluster_num)
-            self.chain_editor.set_chain(chain)
+            # Cas spécial : résultat dans le Root Directory
+            if cluster_num == 'ROOT':
+                # 1. Pas de chaîne FAT pour le root directory
+                self.chain_editor.set_chain([])
 
-            # 2. Lire et afficher le contenu du cluster dans le hex viewer
-            cluster_data = self.parser.read_cluster(cluster_num)
-            cluster_offset = bs.first_data_sector * bs.bytes_per_sector + (cluster_num - 2) * bs.sectors_per_cluster * bs.bytes_per_sector
+                # 2. Afficher le root directory dans le hex viewer
+                root_data = result.get('root_data', b'')
+                root_offset = (bs.reserved_sectors + bs.num_fats * bs.sectors_per_fat) * bs.bytes_per_sector
 
-            self.chain_hex_viewer.set_title(f"Cluster {cluster_num} (Offset: 0x{cluster_offset:X}) - Résultat de recherche")
-            self.chain_hex_viewer.set_data(cluster_data, cluster_offset)
+                self.chain_hex_viewer.set_title(f"Root Directory (Offset: 0x{root_offset:X}) - Résultat de recherche")
+                self.chain_hex_viewer.set_data(root_data, root_offset)
 
-            # 2b. Mettre en évidence le texte trouvé dans le hex viewer
-            position_in_cluster = result['position_in_cluster']
-            match_length = result.get('match_length', 0)
-            if match_length > 0:
-                self.chain_hex_viewer.highlight_range(position_in_cluster, match_length)
+                # 2b. Mettre en évidence le texte trouvé
+                position = result['position_in_cluster']
+                match_length = result.get('match_length', 0)
+                if match_length > 0:
+                    self.chain_hex_viewer.highlight_range(position, match_length)
 
-            # 3. Calculer les secteurs pour la mise en évidence
-            fat_entry_offset = bs.reserved_sectors * bs.bytes_per_sector + (cluster_num * 2)
-            fat_sector = fat_entry_offset // bs.bytes_per_sector
-            data_sector = bs.first_data_sector + (cluster_num - 2) * bs.sectors_per_cluster
+                # 3. Mettre en évidence le root directory dans la carte
+                root_start_sector = bs.reserved_sectors + bs.num_fats * bs.sectors_per_fat
+                self.partition_map.clear_highlight()
+                # On pourrait mettre en évidence le root directory ici si besoin
 
-            # 4. Mettre en évidence dans la cartographie
-            self.partition_map.highlight_positions(fat_sector, data_sector, cluster_num)
+                # 4. Afficher le résultat
+                result_msg = f"✅ ROOT DIRECTORY | Offset: {absolute_offset} (0x{absolute_offset:X}) | Position: {position}"
+                self.chain_editor.set_search_result(result_msg)
 
-            # 5. Scroller jusqu'au cluster dans la carte
-            if data_sector in self.partition_map.sector_positions:
-                hx, hy = self.partition_map.sector_positions[data_sector]
-                self.map_scroll_area.ensureVisible(hx, hy, 100, 100)
+            else:
+                # Cas normal : résultat dans un cluster de données
+                # 1. Charger la chaîne FAT pour ce cluster
+                chain = self.parser.parse_fat_chain(self.fat_data, cluster_num)
+                self.chain_editor.set_chain(chain)
 
-            # 6. Afficher le résultat dans l'éditeur de chaîne
-            result_msg = f"✅ Cluster {cluster_num} | Offset: {absolute_offset} (0x{absolute_offset:X}) | Position dans cluster: {result['position_in_cluster']}"
-            self.chain_editor.set_search_result(result_msg)
+                # 2. Lire et afficher le contenu du cluster dans le hex viewer
+                cluster_data = self.parser.read_cluster(cluster_num)
+                cluster_offset = bs.first_data_sector * bs.bytes_per_sector + (cluster_num - 2) * bs.sectors_per_cluster * bs.bytes_per_sector
+
+                self.chain_hex_viewer.set_title(f"Cluster {cluster_num} (Offset: 0x{cluster_offset:X}) - Résultat de recherche")
+                self.chain_hex_viewer.set_data(cluster_data, cluster_offset)
+
+                # 2b. Mettre en évidence le texte trouvé dans le hex viewer
+                position_in_cluster = result['position_in_cluster']
+                match_length = result.get('match_length', 0)
+                if match_length > 0:
+                    self.chain_hex_viewer.highlight_range(position_in_cluster, match_length)
+
+                # 3. Calculer les secteurs pour la mise en évidence
+                fat_entry_offset = bs.reserved_sectors * bs.bytes_per_sector + (cluster_num * 2)
+                fat_sector = fat_entry_offset // bs.bytes_per_sector
+                data_sector = bs.first_data_sector + (cluster_num - 2) * bs.sectors_per_cluster
+
+                # 4. Mettre en évidence dans la cartographie
+                self.partition_map.highlight_positions(fat_sector, data_sector, cluster_num)
+
+                # 5. Scroller jusqu'au cluster dans la carte
+                if data_sector in self.partition_map.sector_positions:
+                    hx, hy = self.partition_map.sector_positions[data_sector]
+                    self.map_scroll_area.ensureVisible(hx, hy, 100, 100)
+
+                # 6. Afficher le résultat dans l'éditeur de chaîne
+                result_msg = f"✅ Cluster {cluster_num} | Offset: {absolute_offset} (0x{absolute_offset:X}) | Position dans cluster: {result['position_in_cluster']}"
+                self.chain_editor.set_search_result(result_msg)
 
         except Exception as e:
             QMessageBox.critical(self, "Erreur", f"Erreur lors de l'affichage du résultat:\n{str(e)}")
