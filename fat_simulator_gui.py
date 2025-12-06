@@ -1148,11 +1148,17 @@ class FATSimulatorGUI(QMainWindow):
 
             else:
                 # Cas normal : résultat dans un cluster de données
-                # 1. Charger la chaîne FAT pour ce cluster
+                # 1. Trouver le début de la chaîne FAT et charger toute la chaîne
                 t1 = time.time()
-                chain = self.parser.parse_fat_chain(self.fat_data, cluster_num)
+                # D'abord, trouver le premier cluster de la chaîne
+                chain_start = self.parser.find_chain_start(self.fat_data, cluster_num)
+                print(f"[PERF]   find_chain_start: {(time.time()-t1)*1000:.1f}ms (found {chain_start} from {cluster_num})")
+
+                # Ensuite, parser toute la chaîne depuis le début
+                t1b = time.time()
+                chain = self.parser.parse_fat_chain(self.fat_data, chain_start)
                 self.chain_editor.set_chain(chain)
-                print(f"[PERF]   parse_fat_chain + set_chain: {(time.time()-t1)*1000:.1f}ms")
+                print(f"[PERF]   parse_fat_chain + set_chain: {(time.time()-t1b)*1000:.1f}ms (total chain: {len(chain)} clusters)")
 
                 # 2. Lire et afficher le contenu du cluster dans le hex viewer
                 t2 = time.time()

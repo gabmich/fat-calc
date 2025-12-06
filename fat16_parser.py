@@ -357,6 +357,56 @@ class FAT16Parser:
             return value == 0x0FFFFFF7
         return False
 
+    def find_chain_start(self, fat_data: bytes, cluster: int) -> int:
+        """
+        Finds the start of a FAT chain by working backwards from a given cluster.
+
+        Args:
+            fat_data: The FAT data
+            cluster: A cluster in the chain
+
+        Returns:
+            The first cluster of the chain
+        """
+        if cluster < 2:
+            return cluster
+
+        # Build a reverse map: cluster -> clusters that point to it
+        total_clusters = self.boot_sector.total_clusters
+        visited = set()
+        current = cluster
+
+        # Work backwards until we find a cluster that no one points to
+        max_iterations = 10000  # Protection against infinite loops
+        iterations = 0
+
+        while iterations < max_iterations:
+            visited.add(current)
+            found_predecessor = False
+
+            # Search through all clusters to find one that points to current
+            for check_cluster in range(2, total_clusters + 2):
+                if check_cluster in visited:
+                    continue  # Skip clusters we've already checked
+
+                next_cluster = self.get_fat_entry(fat_data, check_cluster)
+
+                if next_cluster == current:
+                    # Found a cluster that points to current
+                    current = check_cluster
+                    found_predecessor = True
+                    break
+
+            if not found_predecessor:
+                # No cluster points to current, so current is the start
+                return current
+
+            iterations += 1
+
+        # If we hit max iterations, return the current cluster
+        # (might be in a loop, but at least return something)
+        return current
+
     def parse_fat_chain(self, fat_data: bytes, start_cluster: int) -> List[int]:
         """Parses a FAT chain from a starting cluster (supports FAT12/16/32)"""
         chain = [start_cluster]
