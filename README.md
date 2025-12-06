@@ -1,458 +1,247 @@
-# FAT16 Simulator - Forensic Analysis Tool
+# FAT Filesystem Explorer
 
-Outil forensique interactif pour analyser et éditer des images disque FAT16 (.raw). Permet de visualiser la structure de la partition, inspecter le contenu en hexadécimal, et reconstituer des chaînages FAT cassés de manière ludique.
+A visual, interactive tool for exploring and understanding FAT12/16/32 filesystems. Built as an educational project to learn about file allocation tables, disk structures, and forensic analysis.
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue)
 ![Python](https://img.shields.io/badge/python-3.8%2B-blue)
 ![License](https://img.shields.io/badge/license-Educational-blue)
 
-## 🎯 Fonctionnalités
+## 🎯 Project Goals
 
-### ✅ Actuellement Implémenté (FAT16)
+This project is designed to help understand:
+- How FAT (File Allocation Table) filesystems work
+- Disk sector organization and allocation
+- Cluster chains and file fragmentation
+- Hexadecimal data representation
+- Forensic analysis techniques for deleted file recovery
 
-#### 📂 Analyse d'Images Disque
-- ✅ Ouverture d'images .raw, .img, .dd
-- ✅ Détection automatique des partitions (MBR)
-- ✅ Lecture du Boot Sector FAT16
-- ✅ Extraction de tous les paramètres de partition :
-  - Octets par secteur
-  - Secteurs par cluster
-  - Secteurs réservés
-  - Nombre de zones FAT
-  - Secteurs par zone FAT
-  - Entrées du répertoire racine
-  - Volume label et ID
+## ✨ Features
 
-#### 🗺️ Visualisation de la Partition
-- ✅ Carte graphique de la partition avec code couleur :
-  - 🟡 **Jaune** : Boot Sector
-  - 🔴 **Rouge** : Reserved Sectors
-  - 🟢 **Vert clair** : FAT 1
-  - 🟢 **Vert foncé** : FAT 2
-  - 🟠 **Orange** : Root Directory
-  - 🔵 **Bleu** : Data Zone
-- ✅ Légende interactive
-- ✅ Vue 1 carré = 1 secteur (détail maximal)
+### Partition Analysis
+- **Multi-FAT Support**: Automatically detects and parses FAT12, FAT16, and FAT32 filesystems
+- **Visual Partition Map**: Color-coded visualization of disk sectors
+  - Boot sector, reserved area, FAT tables, root directory, and data area
+  - Empty vs. full sectors differentiation (light blue vs. dark blue)
+- **Boot Sector Information**: Complete parsing and display of BIOS Parameter Block (BPB)
 
-#### 🔍 Hex Viewer Intégré
-- ✅ Visualisation hexadécimale + ASCII
-- ✅ Affichage par **Secteur** (avec numéro)
-- ✅ Affichage par **Cluster** (2+)
-- ✅ Affichage de la **FAT** (FAT1 ou FAT2)
-- ✅ Offsets automatiques affichés
-- ✅ Coloration syntaxique
+### Data Exploration
+- **Cluster Chain Viewer**: Visual representation of FAT chains
+  - Navigate through linked clusters
+  - Identify file fragments
+  - Detect broken chains
+- **Hexadecimal Editor**:
+  - View raw sector/cluster data
+  - Edit mode with validation (hexadecimal characters only)
+  - Sector boundaries visualization with separators
+  - Save modifications directly to disk image
+  - Real-time modification tracking (orange highlighting)
 
-#### 📊 Table FAT Complète
-- ✅ **Visualisation de tous les clusters** en grille colorée
-- ✅ **Code couleur intelligent** :
-  - 🔲 Gris : Cluster libre
-  - 🟢 Vert : Cluster utilisé (→ suivant)
-  - 🔴 Rouge : EOF (fin de chaîne)
-  - 🟠 Orange : Cluster défectueux
-  - 🟡 Jaune : Réservé
-- ✅ **Clic** sur un cluster → affichage dans le Hex Viewer
-- ✅ **Double-clic** sur un cluster → ajout à la chaîne
-- ✅ **Drag & drop** depuis la table vers la chaîne
-- ✅ Recherche rapide (Aller au cluster)
-- ✅ Sélection visuelle (bordure bleue)
+### Search Capabilities
+- **Cluster Search**: Find specific clusters by number (decimal, hex, little/big endian)
+  - Displays cluster content and FAT chain
+  - Highlights position in partition map
+- **Text Search**: Search for strings in data area and root directory
+  - Case-sensitive/insensitive options
+  - Highlights matches in hex viewer
+  - Navigate results with keyboard (arrow keys)
+  - Search in root directory for filenames
 
-#### 🔗 Éditeur de Chaîne FAT (Drag & Drop Positionnel)
-- ✅ Chargement automatique d'une chaîne depuis un cluster de départ
-- ✅ Visualisation graphique de la chaîne (blocs colorés + flèches)
-- ✅ **Zones de drop entre chaque cluster** (📍)
-- ✅ **Drag & drop positionnel** : insérer un cluster n'importe où
-- ✅ **Glisser depuis la table FAT** vers la chaîne
-- ✅ **Réorganiser les clusters** dans la chaîne (drag entre positions)
-- ✅ Ajout manuel de clusters (bouton ➕)
-- ✅ Ajout de marqueur EOF (0xFFFF) (bouton 🔚)
-- ✅ **Clic** sur un cluster → affichage dans le Hex Viewer
-- ✅ **Clic droit** sur un cluster → menu contextuel (Supprimer/Voir)
-- ✅ Indicateur de clusters cassés (⚠)
-- ✅ Effacement de la chaîne
-- ✅ **Feedback visuel** pendant le drag (zones bleues)
+### Forensic Features
+- **Root Directory Parsing**: View and search file entries
+- **Deleted File Detection**: Identify empty sectors (all zeros displayed in light blue)
+- **FAT Entry Analysis**: Inspect individual FAT entries
+- **Offset Calculation**: Compute precise byte positions for any cluster
+- **Performance Optimized**: Scans 10,000 sectors in ~10-100ms
 
-### 🚧 Prévu Mais Non Implémenté
+## 🚀 Getting Started
 
-- ⏳ Support FAT12
-- ⏳ Support FAT32
-- ⏳ Sauvegarde des modifications dans l'image .raw
-- ⏳ Édition directe des valeurs FAT en hexadécimal
-- ⏳ Export/Import de chaînes FAT en JSON
-- ⏳ Reconstruction automatique de fichiers
-- ⏳ Détection automatique de corruption
-- ⏳ Undo/Redo
-- ⏳ Comparaison FAT1 vs FAT2
-
----
-
-## 📥 Installation
-
-### 1. Prérequis
-
-- **Python 3.8+**
-- **PyQt6** (installé via pip)
-
-### 2. Installation
-
+### Prerequisites
 ```bash
-cd fat-simulator
-
-# Créer un environnement virtuel (recommandé)
-python3 -m venv venv
-
-# Activer l'environnement
-source venv/bin/activate  # Linux/Mac
-# ou
-venv\Scripts\activate  # Windows
-
-# Installer les dépendances
-pip install -r requirements.txt
+Python 3.8+
+PyQt6
 ```
 
----
-
-## 🚀 Utilisation
-
-### Lancement de l'Application
-
+### Installation
 ```bash
-# Avec le script de lancement
-./run_simulator.sh
+# Clone or navigate to the repository
+cd fat-calc
 
-# Ou manuellement
-source venv/bin/activate
+# Create virtual environment
+python3 -m venv venv
+source venv/bin/activate  # On Windows: venv\Scripts\activate
+
+# Install dependencies
+pip install PyQt6
+
+# Run the application
+./run_simulator.sh
+# Or directly:
 python fat_simulator_gui.py
 ```
 
-### Workflow Typique
+### Usage
 
-1. **Ouvrir une image** :
-   - Cliquez sur "📂 Ouvrir Image .raw" ou `Ctrl+O`
-   - Sélectionnez votre fichier .raw, .img ou .dd
-   - L'application détecte automatiquement les partitions FAT16
+1. **Open a disk image**: Click "📂 Ouvrir Image .raw" or use Ctrl+O
+   - Supports raw disk images (.raw, .img, .dd)
+   - Automatically detects partition type and FAT variant
 
-2. **Explorer la structure** :
-   - Consultez les informations de la partition (gauche)
-   - Visualisez la carte graphique (droite)
+2. **Explore the partition**:
+   - View partition information in the left panel
+   - Browse the visual sector map on the right
+   - Search for clusters or text content
 
-3. **Inspecter en hexadécimal** :
-   - Onglet "📄 Hex Viewer"
-   - Sélectionnez le type : Secteur / Cluster / FAT
-   - Entrez le numéro
-   - Cliquez "Afficher"
+3. **Analyze data**:
+   - Click on search results to view hex data
+   - Navigate through cluster chains
+   - Edit hex values in edit mode (use with caution!)
 
-4. **Explorer la table FAT complète** :
-   - Onglet "📊 Table FAT Complète"
-   - Visualisez tous les clusters avec code couleur
-   - **Cliquez** sur un cluster pour voir son contenu en hexa
-   - **Double-cliquez** sur un cluster pour l'ajouter à la chaîne
-   - **Glissez** un cluster vers la chaîne (drag & drop)
-   - Utilisez "Aller au cluster" pour naviguer rapidement
+4. **Search for data**:
+   - **Cluster search**: Enter cluster number to view its content and chain
+   - **Text search**: Find strings in data area or filenames in root directory
+   - Navigate results with arrow keys or mouse clicks
 
-5. **Reconstituer une chaîne FAT** :
-   - Onglet "🔗 Éditeur de Chaîne FAT"
+## 📁 Project Structure
 
-   **Méthode 1 - Chargement automatique :**
-   - Entrez le cluster de départ (ex: 2)
-   - Cliquez "📥 Charger Chaîne"
-   - La chaîne s'affiche graphiquement
+```
+fat-calc/
+├── fat_simulator_gui.py    # Main application window and UI
+├── fat16_parser.py          # FAT12/16/32 parser and disk I/O
+├── hex_viewer.py            # Hexadecimal viewer/editor widget
+├── fat_chain_editor.py      # Visual FAT chain editor widget
+├── run_simulator.sh         # Launch script
+└── README.md                # This file
+```
 
-   **Méthode 2 - Construction manuelle :**
-   - Allez dans "📊 Table FAT Complète"
-   - **Glissez** des clusters depuis la table vers la chaîne
-   - Déposez-les entre les clusters existants (zones +)
-   - Réorganisez en glissant les clusters dans la chaîne
+## 🎓 Learning Resources
 
-   **Éditer la chaîne** :
-     - ➕ Ajouter un cluster manuellement (numéro)
-     - 🔚 Ajouter un marqueur EOF (fin de fichier)
-     - **Glisser/Déposer positionnel** : insérer n'importe où
-     - **Clic** sur un cluster → voir son contenu
-     - **Clic droit** → Supprimer / Voir le contenu
-     - Les zones **+** (bleues au survol) = zones de drop
+### Understanding FAT Filesystems
 
-6. **Sauvegarder (futur)** :
-   - Cliquez "💾 Sauvegarder Chaîne" (non implémenté)
+**Boot Sector**: Contains BIOS Parameter Block (BPB) with filesystem parameters such as:
+- Bytes per sector (usually 512)
+- Sectors per cluster (power of 2)
+- Number of FAT tables (usually 2 for redundancy)
+- Root directory entries count
+- Total sectors on partition
+
+**FAT Tables**: File Allocation Table - maps cluster chains
+- Each entry points to the next cluster in a file's chain
+- Special values: FREE (0x0000), EOF (0xFFF8+), BAD (0xFFF7)
+
+**Root Directory**: Fixed-size directory for FAT12/16 (variable for FAT32)
+- Contains 32-byte directory entries
+- Stores filenames in 8.3 format (8 char name + 3 char extension)
+
+**Data Area**: Actual file content storage in clusters
+- Clusters numbered starting from 2
+- Minimum allocation unit
+
+### Key Concepts
+
+- **Cluster**: Smallest allocation unit (multiple sectors)
+- **Sector**: Fixed 512-byte disk unit (sometimes 4096 on modern drives)
+- **FAT Entry**: Pointer to next cluster in chain (or EOF/bad cluster marker)
+- **LBA (Logical Block Addressing)**: Sector numbering scheme
+- **Cluster Chain**: Linked list of clusters forming a file
+
+### FAT Type Detection
+
+Based on the number of clusters:
+- **FAT12**: < 4,085 clusters (floppy disks, small partitions)
+  - 12-bit entries, 1.5 bytes per entry
+- **FAT16**: 4,085 - 65,524 clusters (small hard drives, USB sticks)
+  - 16-bit entries, 2 bytes per entry
+- **FAT32**: ≥ 65,525 clusters (modern USB drives, SD cards)
+  - 32-bit entries (28 bits used), 4 bytes per entry
+
+## ⚠️ Important Notes
+
+### Safety
+- **Read-only by default**: The application opens images in read-only mode
+- **Edit mode warning**: Modifications in edit mode are written directly to the disk image
+- **Backup recommendation**: Always work on copies of important disk images
+- **Irreversible operations**: File modifications cannot be undone after saving
+
+### Performance
+- Automatically limits visualization to 10,000 sectors for performance
+- Empty sector scanning takes ~10-100ms on typical images
+- Hex viewer supports files of any size with efficient rendering
+- Sector-by-sector scanning optimized for sequential reads
+
+## 🔧 Advanced Features
+
+### Hex Editor
+- **Overwrite mode only**: Cannot insert or delete, only replace existing bytes
+- **Validation**: Only accepts hexadecimal characters (0-9, A-F)
+- **Real-time tracking**: Modified bytes highlighted in orange
+- **Direct write**: Save button writes changes to disk image
+- **Event filtering**: Blocks paste, cut, and invalid characters
+- **Nibble editing**: Each hex digit modifies high or low nibble independently
+
+### FAT Chain Visualization
+- Add/remove clusters from chains
+- Mark clusters as EOF (end of file)
+- Visualize broken or corrupted chains
+- Navigate to cluster content with single click
+- Context menu for cluster operations
+
+### Visual Partition Map
+- **Color coding**:
+  - Yellow: Boot sector
+  - Red: Reserved sectors
+  - Light green: FAT1
+  - Dark green: FAT2
+  - Orange: Root directory
+  - Dark blue: Data sectors (with content)
+  - Light blue: Empty data sectors (all zeros)
+- **Interactive**: Click to navigate, tooltip info
+- **Highlighting**: Shows current cluster and FAT entry positions
+
+## 📝 Technical Details
+
+### Supported Formats
+- Raw disk images (sector-by-sector copies)
+- MBR-partitioned images
+- Direct partition images (no MBR)
+- FAT12, FAT16, and FAT32 variants
+
+### Not Supported
+- GPT partitions
+- Long File Names (LFN) - only 8.3 filenames shown
+- NTFS, ext4, or other modern filesystems
+- Compressed or encrypted volumes
+
+### Architecture
+
+The application follows a Model-View-Controller pattern:
+- **Model**: `fat16_parser.py` (business logic, I/O)
+- **View**: PyQt6 widgets (`hex_viewer.py`, `fat_chain_editor.py`)
+- **Controller**: `fat_simulator_gui.py` (event handling)
+
+### Technologies Used
+- **PyQt6**: Cross-platform GUI framework
+- **Python struct**: Binary data parsing
+- **Qt Signals/Slots**: Event-driven architecture
+- **Qt Painter**: Custom graphics rendering
+
+## 🤝 Contributing
+
+This is an educational project. Feel free to:
+- Report bugs or suggest features
+- Add new visualization modes
+- Improve forensic capabilities
+- Enhance performance optimizations
+
+## 📜 License
+
+This project is provided as-is for educational purposes.
+
+## 🙏 Acknowledgments
+
+Built to understand low-level filesystem structures and forensic analysis techniques. Inspired by professional forensic tools like Autopsy and FTK Imager, but designed specifically for learning and exploration.
 
 ---
 
-## 📐 Architecture du Projet
+**Note**: This tool is for educational purposes. Always respect data privacy and legal requirements when analyzing disk images. Only use on your own data or with explicit authorization.
 
-```
-fat-simulator/
-├── fat16_parser.py          # Parser pour images .raw FAT16
-├── hex_viewer.py            # Widget hex viewer (PyQt6)
-├── fat_table_viewer.py      # Widget table FAT complète (grille)
-├── fat_chain_editor.py      # Widget éditeur de chaîne FAT (drag & drop)
-├── fat_simulator_gui.py     # Application principale (GUI)
-├── create_test_image.py     # Générateur d'images de test
-├── requirements.txt         # Dépendances Python
-├── run_simulator.sh         # Script de lancement
-├── .gitignore               # Fichiers à ignorer
-└── README.md                # Documentation
-```
-
-### Composants Principaux
-
-#### `fat16_parser.py`
-- **Classes** :
-  - `BootSector` : Représente le boot sector FAT16
-  - `MBRPartition` : Représente une partition dans le MBR
-  - `FAT16Parser` : Parser principal pour lire l'image .raw
-
-- **Méthodes clés** :
-  - `read_mbr()` : Lit le Master Boot Record
-  - `read_boot_sector()` : Lit le boot sector FAT16
-  - `read_sector(n)` : Lit un secteur spécifique
-  - `read_cluster(n)` : Lit un cluster spécifique
-  - `read_fat(1|2)` : Lit une table FAT complète
-  - `parse_fat_chain(start)` : Parse une chaîne FAT
-  - `get_fat_entry(cluster)` : Retourne la valeur d'une entrée FAT
-
-#### `hex_viewer.py`
-- Widget PyQt6 pour afficher des données en hexadécimal
-- Format : Offset | Hex | ASCII
-- Coloration syntaxique
-- Support des offsets personnalisés
-
-#### `fat_table_viewer.py`
-- Widget PyQt6 pour afficher la table FAT complète
-- **ClusterCell** : Cellules cliquables représentant chaque cluster
-- Grille de 10 colonnes (personnalisable)
-- Code couleur selon l'état du cluster
-- Recherche rapide (aller au cluster)
-- Support drag & drop vers la chaîne
-
-#### `fat_chain_editor.py`
-- Widget PyQt6 pour éditer des chaînes FAT
-- **ClusterBlock** : Blocs draggables représentant des clusters
-- **DropZone** : Zones de drop entre les clusters (insertion positionnelle)
-- Support drag & drop bidirectionnel
-- Visualisation EOF (0xFFFF)
-- Détection de clusters cassés (⚠)
-- Menu contextuel (clic droit)
-
-#### `fat_simulator_gui.py`
-- Application principale PyQt6
-- Interface à onglets (Hex Viewer / Éditeur FAT)
-- Carte de partition interactive
-- Gestion des événements utilisateur
-
----
-
-## 🎨 Interface Utilisateur
-
-### Fenêtre Principale
-
-```
-┌───────────────────────────────────────────────────────────────┐
-│ Fichier                                                        │
-├───────────────────────────────────────────────────────────────┤
-│ [📂 Ouvrir Image .raw]  ✓ Image chargée: disk.raw            │
-├───────────────────┬───────────────────────────────────────────┤
-│ Informations      │ Carte de la Partition                     │
-│ de la Partition   │ [Visualisation graphique colorée]         │
-│                   │ 🟡🔴🟢🟢🟠🔵🔵🔵🔵🔵...                     │
-│ - Octets/secteur  │                                            │
-│ - Secteurs/cluster│ Légende: Boot Reserved FAT1 FAT2 ...      │
-│ - ...             │                                            │
-├───────────────────┴───────────────────────────────────────────┤
-│ ┌─ 📄 Hex Viewer ─── 📊 Table FAT ─── 🔗 Éditeur Chaîne ──┐│
-│ │ Type: [Cluster ▾] Numéro: [2] [Afficher]                 ││
-│ │                                                            ││
-│ │ Offset    00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D ...   ││
-│ │ 00042000  4D 79 46 69 6C 65 20 20 54 58 54 20 00 ...       ││
-│ │ 00042010  ...                                              ││
-│ └────────────────────────────────────────────────────────────┘│
-└───────────────────────────────────────────────────────────────┘
-```
-
-### Table FAT Complète
-
-```
-┌────────────────────────────────────────────────────────────┐
-│ Table FAT - Tous les Clusters  [Aller au cluster: ___ ↓]  │
-├────────────────────────────────────────────────────────────┤
-│ 💡 Cliquez pour voir, double-cliquez pour ajouter         │
-│                                                             │
-│ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐ ┌───┐   │
-│ │[0]│ │[1]│ │[2]│ │[3]│ │[4]│ │[5]│ │[6]│ │[7]│ │[8]│   │
-│ │RES│ │EOF│ │→3 │ │→4 │ │EOF│ │→6 │ │EOF│ │⚠ │ │   │   │
-│ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘ └───┘   │
-│                                                             │
-│ 🔲 Libre  🟢 Utilisé  🔴 EOF  🟠 Défectueux  🟡 Réservé   │
-└────────────────────────────────────────────────────────────┘
-```
-
-### Éditeur de Chaîne FAT (Drag & Drop Positionnel)
-
-```
-┌────────────────────────────────────────────────────────────┐
-│ Éditeur de Chaîne FAT  [➕ Ajouter] [🔚 EOF] [🗑️ Effacer] │
-├────────────────────────────────────────────────────────────┤
-│ 💡 Glissez des clusters depuis la table FAT               │
-│ Cluster de départ: [2 ▾] [📥 Charger Chaîne]              │
-│                                                             │
-│ ┌─┐ ┌─────────┐ ┌─┐ ┌─────────┐ ┌─┐ ┌─────────┐ ┌─┐ ┌───┐│
-│ │+│ │Cluster  │ │+│ │Cluster  │ │+│ │Cluster  │ │+│ │EOF││
-│ │ │ │   2     │ │ │ │   3     │ │ │ │   5     │ │ │ │...││
-│ └─┘ └─────────┘ └─┘ └─────────┘ └─┘ └─────────┘ └─┘ └───┘│
-│      ⤷ flèche →      ⤷ flèche →      ⤷ flèche →           │
-│                                                             │
-│ Chaîne: 4 cluster(s) | Clusters: 2, 3, 5, 65535           │
-└────────────────────────────────────────────────────────────┘
-
-Zones + : Déposez un cluster ici pour l'insérer à cette position
-```
-
----
-
-## 🔬 Cas d'Usage
-
-### 1. Forensique Numérique
-- Analyser des images disque suspectes
-- Identifier des fichiers supprimés
-- Reconstituer des chaînes FAT corrompues
-- Extraire des données fragmentées
-
-### 2. Récupération de Données
-- Réparer des chaînages FAT cassés
-- Reconstruire manuellement des fichiers
-- Localiser des clusters orphelins
-
-### 3. Éducation
-- Apprendre la structure FAT16
-- Comprendre le chaînage de clusters
-- Visualiser l'organisation physique du disque
-- Expérimenter avec des images test
-
-### 4. Recherche
-- Analyser le comportement du système de fichiers
-- Tester des scénarios de corruption
-- Développer des algorithmes de récupération
-
----
-
-## 🧪 Créer une Image Test
-
-Pour tester l'application, vous pouvez créer une petite image FAT16 :
-
-```bash
-# Créer une image de 10 MB
-dd if=/dev/zero of=test.raw bs=1M count=10
-
-# Formater en FAT16
-mkfs.vfat -F 16 test.raw
-
-# Monter l'image
-sudo mkdir -p /mnt/test
-sudo mount -o loop test.raw /mnt/test
-
-# Créer des fichiers de test
-echo "Test file 1" | sudo tee /mnt/test/file1.txt
-echo "Test file 2" | sudo tee /mnt/test/file2.txt
-
-# Démonter
-sudo umount /mnt/test
-```
-
-Ensuite, ouvrez `test.raw` dans l'application !
-
----
-
-## 🛠️ Développement
-
-### Ajouter de Nouvelles Fonctionnalités
-
-1. **Support FAT32** : Modifier `fat16_parser.py` pour gérer les différences FAT32
-2. **Sauvegarde** : Implémenter l'écriture dans le fichier .raw
-3. **Undo/Redo** : Ajouter un système de commandes réversibles
-4. **Export** : Permettre d'exporter les clusters reconstruits
-
-### Architecture MVC
-
-L'application suit une architecture Modèle-Vue-Contrôleur :
-- **Modèle** : `fat16_parser.py` (logique métier)
-- **Vue** : Widgets PyQt6 (`hex_viewer.py`, `fat_chain_editor.py`)
-- **Contrôleur** : `fat_simulator_gui.py` (gestion des événements)
-
----
-
-## ⚠️ Limitations Actuelles
-
-- ✋ **Lecture seule** : Les modifications ne sont pas encore sauvegardées
-- ✋ **FAT16 uniquement** : FAT12 et FAT32 non supportés
-- ✋ **Images < 5 GB** : Performance optimale pour petites images
-- ✋ **Pas de validation** : Pas de vérification de cohérence FAT
-
----
-
-## 🗺️ Roadmap
-
-### Version 1.1 (Futur Proche)
-- [ ] Sauvegarde des modifications dans le fichier .raw
-- [ ] Édition directe des valeurs FAT en hexadécimal
-- [ ] Drop à position spécifique dans la chaîne
-- [ ] Export de chaînes FAT en JSON
-
-### Version 1.2 (Futur)
-- [ ] Support FAT32
-- [ ] Détection automatique de corruption
-- [ ] Reconstruction automatique de fichiers
-- [ ] Comparaison FAT1 vs FAT2
-
-### Version 2.0 (Futur Lointain)
-- [ ] Support FAT12
-- [ ] Mode diff pour comparer deux images
-- [ ] Génération de rapports forensiques
-- [ ] Plugin system
-
----
-
-## 📝 Notes Techniques
-
-### Format FAT16
-
-**Structure de base :**
-```
-[Boot Sector] [Reserved] [FAT1] [FAT2] [Root Dir] [Data Zone]
-     1           1-3      246     246      32      Reste
-```
-
-**Entrées FAT16 (2 octets)** :
-- `0x0000` : Cluster libre
-- `0x0002-0xFFEF` : Cluster suivant dans la chaîne
-- `0xFFF0-0xFFF6` : Réservé
-- `0xFFF7` : Cluster défectueux
-- `0xFFF8-0xFFFF` : Fin de chaîne (EOF)
-
-### PyQt6
-
-Technologies utilisées :
-- **PyQt6** : Framework GUI cross-platform
-- **Signals/Slots** : Système d'événements Qt
-- **Drag & Drop** : API Qt native
-- **QPainter** : Rendu graphique personnalisé
-
----
-
-## 📄 Licence
-
-Ce projet est à usage **éducatif et de recherche forensique**.
-
-⚠️ **Avertissement** : Utilisez cet outil uniquement sur vos propres images ou avec autorisation explicite. L'utilisation à des fins malveillantes est strictement interdite.
-
----
-
-## 🙏 Crédits
-
-Développé avec :
-- Python 3
-- PyQt6 (GUI framework)
-- Inspiré par des outils forensiques comme Autopsy, FTK Imager
-
----
-
-**Version** : 1.0.0
-**Dernière mise à jour** : 2025
-**Support** : FAT16 uniquement (pour l'instant)
+**Version**: 2.0.0
+**Last Updated**: 2025
+**Support**: FAT12, FAT16, FAT32

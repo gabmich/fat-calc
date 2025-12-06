@@ -1,5 +1,5 @@
 """
-Widget pour visualiser et éditer les chaînes FAT
+Widget for visualizing and editing FAT chains
 """
 
 from typing import List, Optional, Callable
@@ -11,7 +11,7 @@ from PyQt6.QtGui import QPainter, QColor, QPen, QAction
 
 
 class ClusterBlock(QLabel):
-    """Widget représentant un cluster dans une chaîne FAT"""
+    """Widget representing a cluster in a FAT chain"""
 
     clicked = pyqtSignal(int)
     right_clicked = pyqtSignal(int, object)  # cluster_number, QPoint
@@ -20,31 +20,31 @@ class ClusterBlock(QLabel):
         super().__init__(parent)
         self.cluster_number = cluster_number
         self.position = position
-        self.is_last = is_last  # Ce cluster est-il le dernier (EOF) ?
+        self.is_last = is_last  # Is this cluster the last one (EOF)?
         self.is_broken = False
         self.setup_ui()
 
     def setup_ui(self):
-        """Configure l'apparence du bloc"""
+        """Configures the block's appearance"""
         self.setFixedSize(80, 50)
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.setFrameStyle(QFrame.Shape.Box | QFrame.Shadow.Raised)
         self.setLineWidth(2)
         self.update_display()
-        # Note: setCursor peut causer des warnings avec certaines versions de Qt
+        # Note: setCursor may cause warnings with some Qt versions
         try:
             self.setCursor(Qt.CursorShape.PointingHandCursor)
         except:
-            pass  # Ignorer si ça ne fonctionne pas
+            pass  # Ignore if it doesn't work
 
-        # Menu contextuel
+        # Context menu
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self._show_context_menu)
 
     def update_display(self):
-        """Met à jour l'affichage du cluster"""
+        """Updates the cluster display"""
         if self.is_last:
-            # Ce cluster est le dernier (EOF)
+            # This cluster is the last one (EOF)
             self.setText(f"Cluster\n{self.cluster_number}\n[EOF]")
             self.setStyleSheet("""
                 QLabel {
@@ -88,32 +88,32 @@ class ClusterBlock(QLabel):
             """)
 
     def set_last(self, is_last: bool):
-        """Marque ce bloc comme dernier (EOF)"""
+        """Marks this block as last (EOF)"""
         self.is_last = is_last
         self.update_display()
 
     def set_broken(self, is_broken: bool):
-        """Marque ce bloc comme cassé"""
+        """Marks this block as broken"""
         self.is_broken = is_broken
         self.update_display()
 
     def mousePressEvent(self, event):
-        """Gère le clic sur le cluster"""
+        """Handles cluster click"""
         if event.button() == Qt.MouseButton.LeftButton:
             self.clicked.emit(self.cluster_number)
             print(f"[ClusterBlock] Clicked cluster {self.cluster_number}")
 
     def _show_context_menu(self, pos):
-        """Affiche le menu contextuel"""
+        """Shows the context menu"""
         self.right_clicked.emit(self.cluster_number, self.mapToGlobal(pos))
 
 
 class FATChainEditor(QWidget):
-    """Widget pour éditer une chaîne FAT"""
+    """Widget for editing a FAT chain"""
 
-    chain_modified = pyqtSignal(list)  # Nouvelle chaîne de clusters
-    cluster_selected = pyqtSignal(int)  # Cluster sélectionné
-    save_requested = pyqtSignal()  # Signal pour demander la sauvegarde
+    chain_modified = pyqtSignal(list)  # New cluster chain
+    cluster_selected = pyqtSignal(int)  # Selected cluster
+    save_requested = pyqtSignal()  # Signal to request save
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -123,41 +123,41 @@ class FATChainEditor(QWidget):
         self.setup_ui()
 
     def setup_ui(self):
-        """Initialise l'interface"""
+        """Initializes the interface"""
         layout = QVBoxLayout()
 
-        # En-tête avec boutons
+        # Header with buttons
         header_layout = QHBoxLayout()
 
         header_layout.addStretch()
 
-        # Bouton pour ajouter un cluster
-        self.add_button = QPushButton("➕ Ajouter Cluster")
+        # Button to add a cluster
+        self.add_button = QPushButton("➕ Add Cluster")
         self.add_button.clicked.connect(self.show_add_cluster_dialog)
         header_layout.addWidget(self.add_button)
 
-        # Note: Le bouton "Ajouter EOF" a été supprimé
-        # Utilisez le clic droit sur un cluster → "Marquer comme dernier (EOF)"
+        # Note: The "Add EOF" button has been removed
+        # Use right-click on a cluster → "Mark as last (EOF)"
 
-        # Bouton pour effacer
-        self.clear_button = QPushButton("🗑️ Effacer Tout")
+        # Button to clear
+        self.clear_button = QPushButton("🗑️ Clear All")
         self.clear_button.clicked.connect(self.clear_chain)
         header_layout.addWidget(self.clear_button)
 
-        # Bouton pour enregistrer
-        self.save_button = QPushButton("💾 Enregistrer")
+        # Button to save
+        self.save_button = QPushButton("💾 Save")
         self.save_button.clicked.connect(self.save_requested.emit)
         header_layout.addWidget(self.save_button)
 
         layout.addLayout(header_layout)
 
-        # Résultat de la recherche (offset FAT + offset Data)
-        self.search_result_label = QLineEdit("Recherchez un cluster pour voir ses offsets")
+        # Search result (FAT offset + Data offset)
+        self.search_result_label = QLineEdit("Search for a cluster to see its offsets")
         self.search_result_label.setReadOnly(True)
         self.search_result_label.setStyleSheet("QLineEdit { padding: 5px; background-color: #E8F4F8; border: 1px solid #90CAF9; border-radius: 3px; color: #1565C0; font-size: 9pt; }")
         layout.addWidget(self.search_result_label)
 
-        # Zone scrollable pour afficher la chaîne
+        # Scrollable area to display the chain
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setMinimumHeight(120)
@@ -173,22 +173,22 @@ class FATChainEditor(QWidget):
         scroll.setWidget(self.chain_container)
         layout.addWidget(scroll)
 
-        # Informations sur la chaîne
-        self.info_label = QLabel("Aucune chaîne chargée")
+        # Chain information
+        self.info_label = QLabel("No chain loaded")
         self.info_label.setStyleSheet("padding: 5px; background-color: #E9ECEF; border-radius: 3px;")
         layout.addWidget(self.info_label)
 
         self.setLayout(layout)
 
     def set_chain(self, chain: List[int]):
-        """Définit la chaîne de clusters à afficher"""
+        """Sets the cluster chain to display"""
         self.chain = chain.copy()
         self.refresh_display()
 
     def set_search_result(self, text: str):
-        """Définit le texte du résultat de recherche"""
+        """Sets the search result text"""
         self.search_result_label.setText(text)
-        # Style selon le type de message
+        # Style according to message type
         if text.startswith("✅") or "Cluster" in text:
             self.search_result_label.setStyleSheet("QLineEdit { padding: 5px; background-color: #E7F5E9; border: 1px solid #81C784; border-radius: 3px; color: #2E7D32; font-size: 9pt; font-weight: bold; }")
         elif text.startswith("❌"):
@@ -197,8 +197,8 @@ class FATChainEditor(QWidget):
             self.search_result_label.setStyleSheet("QLineEdit { padding: 5px; background-color: #E8F4F8; border: 1px solid #90CAF9; border-radius: 3px; color: #1565C0; font-size: 9pt; }")
 
     def refresh_display(self):
-        """Rafraîchit l'affichage de la chaîne"""
-        # Effacer TOUS les widgets enfants du layout
+        """Refreshes the chain display"""
+        # Clear ALL child widgets from the layout
         while self.chain_layout.count():
             item = self.chain_layout.takeAt(0)
             if item is not None:
@@ -206,26 +206,26 @@ class FATChainEditor(QWidget):
                 if widget is not None:
                     widget.setParent(None)
                     widget.deleteLater()
-                # Sinon c'est un spacer ou autre layout item, on l'ignore
+                # Otherwise it's a spacer or other layout item, ignore it
 
         self.cluster_blocks.clear()
 
         if not self.chain:
-            # Afficher un message pour chaîne vide
-            empty_label = QLabel("Chaîne vide - Cliquez sur 'Ajouter Cluster' pour commencer")
+            # Display a message for empty chain
+            empty_label = QLabel("Empty chain - Click 'Add Cluster' to start")
             empty_label.setStyleSheet("padding: 20px; color: #999; font-style: italic;")
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.chain_layout.addWidget(empty_label)
             self.chain_layout.addStretch()
-            self.info_label.setText("Chaîne vide")
+            self.info_label.setText("Empty chain")
             return
 
-        # Créer les widgets pour chaque cluster
+        # Create widgets for each cluster
         for i, cluster in enumerate(self.chain):
-            # Vérifier si c'est le dernier cluster
+            # Check if it's the last cluster
             is_last = (i == len(self.chain) - 1)
 
-            # Bloc du cluster
+            # Cluster block
             block = ClusterBlock(cluster, i, is_last)
             block.clicked.connect(self._on_cluster_clicked)
             block.right_clicked.connect(self._on_cluster_right_clicked)
@@ -233,115 +233,115 @@ class FATChainEditor(QWidget):
             self.cluster_blocks.append(block)
             self.chain_layout.addWidget(block)
 
-            # Ajouter une flèche entre les clusters (sauf après le dernier)
+            # Add an arrow between clusters (except after the last one)
             if i < len(self.chain) - 1:
                 arrow = QLabel("→")
                 arrow.setStyleSheet("font-size: 20pt; color: #495057; padding: 0 5px;")
                 arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.chain_layout.addWidget(arrow)
 
-        # Ajouter un stretch à la fin
+        # Add a stretch at the end
         self.chain_layout.addStretch()
 
-        # Mettre à jour les informations
+        # Update information
         total_size = len(self.chain)
-        cluster_list = ', '.join(map(str, self.chain[:10]))  # Limiter à 10 pour l'affichage
+        cluster_list = ', '.join(map(str, self.chain[:10]))  # Limit to 10 for display
         if len(self.chain) > 10:
-            cluster_list += f", ... ({len(self.chain) - 10} de plus)"
-        self.info_label.setText(f"Chaîne: {total_size} cluster(s) | Clusters: {cluster_list}")
+            cluster_list += f", ... ({len(self.chain) - 10} more)"
+        self.info_label.setText(f"Chain: {total_size} cluster(s) | Clusters: {cluster_list}")
 
     def _on_cluster_clicked(self, cluster_number: int):
-        """Callback quand un cluster est cliqué"""
+        """Callback when a cluster is clicked"""
         self.cluster_selected.emit(cluster_number)
         if self.on_cluster_click:
             self.on_cluster_click(cluster_number)
 
     def _on_cluster_right_clicked(self, cluster_number: int, pos: QPoint):
-        """Callback quand un cluster est cliqué droit"""
+        """Callback when a cluster is right-clicked"""
         menu = QMenu(self)
 
-        # Trouver la position du cluster dans la chaîne
+        # Find the cluster's position in the chain
         try:
             cluster_position = self.chain.index(cluster_number)
         except ValueError:
             cluster_position = -1
 
-        # Action pour voir le contenu
-        view_action = QAction(f"👁️ Voir le contenu du cluster {cluster_number}", self)
+        # Action to view content
+        view_action = QAction(f"👁️ View cluster {cluster_number} content", self)
         view_action.triggered.connect(lambda: self._on_cluster_clicked(cluster_number))
         menu.addAction(view_action)
 
         menu.addSeparator()
 
-        # Action pour marquer comme EOF (dernier)
+        # Action to mark as EOF (last)
         if cluster_position >= 0:
-            mark_eof_action = QAction(f"🔚 Marquer comme dernier (EOF)", self)
+            mark_eof_action = QAction(f"🔚 Mark as last (EOF)", self)
             mark_eof_action.triggered.connect(lambda: self._mark_as_eof(cluster_position))
             menu.addAction(mark_eof_action)
 
         menu.addSeparator()
 
-        # Action pour supprimer le cluster
-        remove_action = QAction(f"🗑️ Supprimer le cluster {cluster_number}", self)
+        # Action to remove cluster
+        remove_action = QAction(f"🗑️ Remove cluster {cluster_number}", self)
         remove_action.triggered.connect(lambda: self._remove_cluster_by_value(cluster_number))
         menu.addAction(remove_action)
 
         menu.exec(pos)
 
     def _remove_cluster_by_value(self, cluster_number: int):
-        """Supprime la première occurrence d'un cluster de la chaîne"""
+        """Removes the first occurrence of a cluster from the chain"""
         try:
-            # Trouver la position
+            # Find the position
             position = self.chain.index(cluster_number)
             self.remove_cluster_at(position)
         except ValueError:
             pass
 
     def _mark_as_eof(self, position: int):
-        """Marque un cluster comme EOF (dernier de la chaîne)"""
+        """Marks a cluster as EOF (last in the chain)"""
         if 0 <= position < len(self.chain):
-            # Tronquer la chaîne à cette position (garder jusqu'à position inclus)
+            # Truncate the chain at this position (keep up to and including position)
             self.chain = self.chain[:position + 1]
             self.refresh_display()
             self.chain_modified.emit(self.chain)
 
             QMessageBox.information(
                 self,
-                "Marqué comme EOF",
-                f"Le cluster {self.chain[position]} est maintenant le dernier de la chaîne.\n"
-                f"Tous les clusters suivants ont été supprimés."
+                "Marked as EOF",
+                f"Cluster {self.chain[position]} is now the last in the chain.\n"
+                f"All following clusters have been removed."
             )
 
     def add_cluster(self, cluster_number: int):
-        """Ajoute un cluster à la fin de la chaîne"""
+        """Adds a cluster to the end of the chain"""
         self.chain.append(cluster_number)
         self.refresh_display()
         self.chain_modified.emit(self.chain)
 
-    # Méthode add_eof() supprimée - utiliser _mark_as_eof() à la place via clic droit
+    # Method add_eof() removed - use _mark_as_eof() instead via right-click
 
     def show_add_cluster_dialog(self):
-        """Affiche un dialogue pour ajouter un cluster"""
+        """Shows a dialog to add a cluster"""
         from PyQt6.QtWidgets import QInputDialog
 
         cluster_number, ok = QInputDialog.getInt(
             self,
-            "Ajouter un Cluster",
-            "Numéro du cluster:",
-            2,  # Valeur par défaut
+            "Add Cluster",
+            "Cluster number:",
+            2,  # Default value
             2,  # Minimum
-            65535  # Maximum pour FAT16
+            65535  # Maximum for FAT16
         )
 
         if ok:
             self.add_cluster(cluster_number)
 
     def clear_chain(self):
-        """Efface toute la chaîne"""
+        """Clears the entire chain"""
         reply = QMessageBox.question(
             self,
-            "Confirmer",
-            "Êtes-vous sûr de vouloir effacer toute la chaîne ?",
+            "Confirm",
+            "Are you sure you want to clear the entire chain?",
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
         )
 
@@ -351,14 +351,14 @@ class FATChainEditor(QWidget):
             self.chain_modified.emit(self.chain)
 
     def remove_cluster_at(self, index: int):
-        """Supprime un cluster à l'index donné"""
+        """Removes a cluster at the given index"""
         if 0 <= index < len(self.chain):
             removed = self.chain.pop(index)
             self.refresh_display()
             self.chain_modified.emit(self.chain)
             QMessageBox.information(
                 self,
-                "Cluster supprimé",
-                f"Le cluster {removed} a été supprimé de la position {index}"
+                "Cluster Removed",
+                f"Cluster {removed} has been removed from position {index}"
             )
 

@@ -1,32 +1,32 @@
 #!/bin/bash
 
-# Script de lancement du FAT Simulator
+# FAT Simulator launch script
 
 echo "==================================="
 echo "FAT16 Simulator - Forensic Tool"
 echo "==================================="
 echo ""
 
-# Vérifier si l'environnement virtuel existe
+# Check if virtual environment exists
 if [ ! -d "venv" ]; then
-    echo "⚠️  Environnement virtuel non trouvé. Création..."
+    echo "⚠️  Virtual environment not found. Creating..."
     python3 -m venv venv
 
-    echo "📦 Installation des dépendances..."
+    echo "📦 Installing dependencies..."
     source venv/bin/activate
     pip install -r requirements.txt
-    echo "✓ Installation terminée"
+    echo "✓ Installation complete"
     echo ""
 fi
 
-# Activer l'environnement virtuel
-echo "🔧 Activation de l'environnement virtuel..."
+# Activate virtual environment
+echo "🔧 Activating virtual environment..."
 source venv/bin/activate
 
-# Lancer l'application
-echo "🚀 Lancement du FAT Simulator..."
+# Launch application
+echo "🚀 Launching FAT Simulator..."
 echo ""
 python fat_simulator_gui.py
 
-# Désactiver l'environnement
+# Deactivate environment
 deactivate

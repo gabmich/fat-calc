@@ -1,6 +1,6 @@
 """
-Parser pour images disque FAT16 (.raw)
-Lit et analyse la structure d'une partition FAT16
+Parser for FAT16 disk images (.raw)
+Reads and analyzes the structure of a FAT16 partition
 """
 
 import struct
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 @dataclass
 class BootSector:
-    """Représente le Boot Sector FAT16"""
+    """Represents the FAT16 Boot Sector"""
     bytes_per_sector: int
     sectors_per_cluster: int
     reserved_sectors: int
@@ -30,33 +30,33 @@ class BootSector:
 
     @property
     def total_sectors(self) -> int:
-        """Retourne le nombre total de secteurs"""
+        """Returns the total number of sectors"""
         return self.total_sectors_32 if self.total_sectors_32 > 0 else self.total_sectors_16
 
     @property
     def root_dir_sectors(self) -> int:
-        """Calcule le nombre de secteurs du répertoire racine"""
+        """Calculates the number of root directory sectors"""
         return ((self.root_entries * 32) + (self.bytes_per_sector - 1)) // self.bytes_per_sector
 
     @property
     def first_data_sector(self) -> int:
-        """Calcule le premier secteur de la zone de données"""
+        """Calculates the first sector of the data area"""
         return self.reserved_sectors + (self.num_fats * self.sectors_per_fat) + self.root_dir_sectors
 
     @property
     def data_sectors(self) -> int:
-        """Calcule le nombre de secteurs de données"""
+        """Calculates the number of data sectors"""
         return self.total_sectors - self.first_data_sector
 
     @property
     def total_clusters(self) -> int:
-        """Calcule le nombre total de clusters"""
+        """Calculates the total number of clusters"""
         return self.data_sectors // self.sectors_per_cluster
 
 
 @dataclass
 class MBRPartition:
-    """Représente une entrée de partition dans le MBR"""
+    """Represents a partition entry in the MBR"""
     status: int
     start_chs: Tuple[int, int, int]
     partition_type: int
@@ -65,23 +65,23 @@ class MBRPartition:
     total_sectors: int
 
     def is_fat16(self) -> bool:
-        """Vérifie si c'est une partition FAT16"""
-        # Types FAT16: 0x04, 0x06, 0x0E
+        """Checks if this is a FAT16 partition"""
+        # FAT16 types: 0x04, 0x06, 0x0E
         return self.partition_type in [0x04, 0x06, 0x0E]
 
     def is_fat32(self) -> bool:
-        """Vérifie si c'est une partition FAT32"""
-        # Types FAT32: 0x0B, 0x0C
+        """Checks if this is a FAT32 partition"""
+        # FAT32 types: 0x0B, 0x0C
         return self.partition_type in [0x0B, 0x0C]
 
     def is_fat12(self) -> bool:
-        """Vérifie si c'est une partition FAT12"""
-        # Type FAT12: 0x01
+        """Checks if this is a FAT12 partition"""
+        # FAT12 type: 0x01
         return self.partition_type == 0x01
 
 
 class FAT16Parser:
-    """Parser pour images disque FAT12/16/32"""
+    """Parser for FAT12/16/32 disk images"""
 
     def __init__(self, image_path: str):
         self.image_path = image_path
@@ -89,14 +89,14 @@ class FAT16Parser:
         self.boot_sector: Optional[BootSector] = None
         self.partitions: List[MBRPartition] = []
         self.current_partition_offset: int = 0
-        self.fat_type: Optional[str] = None  # 'FAT12', 'FAT16', ou 'FAT32'
+        self.fat_type: Optional[str] = None  # 'FAT12', 'FAT16', or 'FAT32'
 
     def open(self):
-        """Ouvre le fichier image"""
+        """Opens the image file"""
         self.file_handle = open(self.image_path, 'rb')
 
     def close(self):
-        """Ferme le fichier image"""
+        """Closes the image file"""
         if self.file_handle:
             self.file_handle.close()
             self.file_handle = None
@@ -109,19 +109,19 @@ class FAT16Parser:
         self.close()
 
     def read_mbr(self) -> List[MBRPartition]:
-        """Lit le MBR et retourne la liste des partitions"""
+        """Reads the MBR and returns the list of partitions"""
         if not self.file_handle:
-            raise RuntimeError("Fichier image non ouvert")
+            raise RuntimeError("Image file not opened")
 
         self.file_handle.seek(0)
         mbr_data = self.file_handle.read(512)
 
-        # Vérifier la signature MBR (0x55AA à l'offset 510)
+        # Check MBR signature (0x55AA at offset 510)
         signature = struct.unpack('<H', mbr_data[510:512])[0]
         if signature != 0xAA55:
-            raise ValueError("Signature MBR invalide")
+            raise ValueError("Invalid MBR signature")
 
-        # Lire les 4 entrées de partition (offset 446, 16 octets chacune)
+        # Read the 4 partition entries (offset 446, 16 bytes each)
         partitions = []
         for i in range(4):
             offset = 446 + (i * 16)
@@ -134,7 +134,7 @@ class FAT16Parser:
             start_lba = struct.unpack('<I', entry[8:12])[0]
             total_sectors = struct.unpack('<I', entry[12:16])[0]
 
-            # Ignorer les partitions vides
+            # Ignore empty partitions
             if partition_type != 0:
                 partition = MBRPartition(
                     status=status,
@@ -150,19 +150,19 @@ class FAT16Parser:
         return partitions
 
     def read_boot_sector(self, partition_offset: int = 0) -> BootSector:
-        """Lit le boot sector d'une partition FAT16"""
+        """Reads the boot sector of a FAT16 partition"""
         if not self.file_handle:
-            raise RuntimeError("Fichier image non ouvert")
+            raise RuntimeError("Image file not opened")
 
         self.current_partition_offset = partition_offset
         self.file_handle.seek(partition_offset)
         boot_data = self.file_handle.read(512)
 
-        # Vérifier le jump boot (0xEB ou 0xE9 au premier octet)
+        # Check jump boot (0xEB or 0xE9 in first byte)
         if boot_data[0] not in [0xEB, 0xE9]:
-            raise ValueError("Jump boot invalide - ce n'est peut-être pas un boot sector FAT")
+            raise ValueError("Invalid jump boot - this may not be a FAT boot sector")
 
-        # Parser le BPB (BIOS Parameter Block)
+        # Parse the BPB (BIOS Parameter Block)
         bytes_per_sector = struct.unpack('<H', boot_data[11:13])[0]
         sectors_per_cluster = boot_data[13]
         reserved_sectors = struct.unpack('<H', boot_data[14:16])[0]
@@ -176,7 +176,7 @@ class FAT16Parser:
         hidden_sectors = struct.unpack('<I', boot_data[28:32])[0]
         total_sectors_32 = struct.unpack('<I', boot_data[32:36])[0]
 
-        # EBPB (Extended BIOS Parameter Block) pour FAT16
+        # EBPB (Extended BIOS Parameter Block) for FAT16
         drive_number = boot_data[36]
         volume_id = struct.unpack('<I', boot_data[39:43])[0]
         volume_label = boot_data[43:54].decode('ascii', errors='ignore').strip()
@@ -201,19 +201,19 @@ class FAT16Parser:
             fs_type=fs_type
         )
 
-        # Détecter automatiquement le type FAT
+        # Automatically detect FAT type
         self._detect_fat_type()
 
         return self.boot_sector
 
     def _detect_fat_type(self):
-        """Détecte le type FAT (FAT12, FAT16 ou FAT32) basé sur le nombre de clusters"""
+        """Detects the FAT type (FAT12, FAT16, or FAT32) based on cluster count"""
         if not self.boot_sector:
             return
 
         total_clusters = self.boot_sector.total_clusters
 
-        # Selon la spécification Microsoft:
+        # According to Microsoft specification:
         # FAT12: < 4085 clusters
         # FAT16: 4085 - 65524 clusters
         # FAT32: >= 65525 clusters
@@ -225,26 +225,26 @@ class FAT16Parser:
             self.fat_type = 'FAT32'
 
     def read_sector(self, sector_number: int) -> bytes:
-        """Lit un secteur spécifique"""
+        """Reads a specific sector"""
         if not self.file_handle or not self.boot_sector:
-            raise RuntimeError("Fichier image ou boot sector non initialisé")
+            raise RuntimeError("Image file or boot sector not initialized")
 
         offset = self.current_partition_offset + (sector_number * self.boot_sector.bytes_per_sector)
         self.file_handle.seek(offset)
         return self.file_handle.read(self.boot_sector.bytes_per_sector)
 
     def read_cluster(self, cluster_number: int) -> bytes:
-        """Lit un cluster spécifique (cluster 2 = premier cluster de données)"""
+        """Reads a specific cluster (cluster 2 = first data cluster)"""
         if not self.boot_sector:
-            raise RuntimeError("Boot sector non initialisé")
+            raise RuntimeError("Boot sector not initialized")
 
         if cluster_number < 2:
-            raise ValueError("Les clusters de données commencent à 2")
+            raise ValueError("Data clusters start at 2")
 
-        # Calculer le secteur correspondant
+        # Calculate the corresponding sector
         first_sector = self.boot_sector.first_data_sector + ((cluster_number - 2) * self.boot_sector.sectors_per_cluster)
 
-        # Lire tous les secteurs du cluster
+        # Read all sectors in the cluster
         data = b''
         for i in range(self.boot_sector.sectors_per_cluster):
             data += self.read_sector(first_sector + i)
@@ -252,20 +252,20 @@ class FAT16Parser:
         return data
 
     def read_fat(self, fat_number: int = 1) -> bytes:
-        """Lit une table FAT complète (1 ou 2)"""
+        """Reads a complete FAT table (1 or 2)"""
         if not self.boot_sector:
-            raise RuntimeError("Boot sector non initialisé")
+            raise RuntimeError("Boot sector not initialized")
 
         if fat_number not in [1, 2]:
-            raise ValueError("fat_number doit être 1 ou 2")
+            raise ValueError("fat_number must be 1 or 2")
 
-        # Calculer le secteur de début de la FAT
+        # Calculate the starting sector of the FAT
         if fat_number == 1:
             first_sector = self.boot_sector.reserved_sectors
         else:
             first_sector = self.boot_sector.reserved_sectors + self.boot_sector.sectors_per_fat
 
-        # Lire tous les secteurs de la FAT
+        # Read all sectors of the FAT
         fat_data = b''
         for i in range(self.boot_sector.sectors_per_fat):
             fat_data += self.read_sector(first_sector + i)
@@ -273,14 +273,14 @@ class FAT16Parser:
         return fat_data
 
     def read_root_directory(self) -> bytes:
-        """Lit le root directory complet"""
+        """Reads the complete root directory"""
         if not self.boot_sector:
-            raise RuntimeError("Boot sector non initialisé")
+            raise RuntimeError("Boot sector not initialized")
 
-        # Le root directory commence après les FATs
+        # The root directory starts after the FATs
         first_sector = self.boot_sector.reserved_sectors + (self.boot_sector.num_fats * self.boot_sector.sectors_per_fat)
 
-        # Lire tous les secteurs du root directory
+        # Read all sectors of the root directory
         root_data = b''
         for i in range(self.boot_sector.root_dir_sectors):
             root_data += self.read_sector(first_sector + i)
@@ -288,45 +288,45 @@ class FAT16Parser:
         return root_data
 
     def _get_fat12_entry(self, fat_data: bytes, cluster: int) -> int:
-        """Retourne la valeur d'une entrée FAT12 pour un cluster donné"""
-        # FAT12: 1.5 octets par entrée (12 bits)
-        # Les entrées sont empaquetées: offset = (cluster * 3) / 2
+        """Returns the value of a FAT12 entry for a given cluster"""
+        # FAT12: 1.5 bytes per entry (12 bits)
+        # Entries are packed: offset = (cluster * 3) / 2
         offset = (cluster * 3) // 2
 
         if offset + 2 > len(fat_data):
             return 0
 
-        # Lire 2 octets
+        # Read 2 bytes
         two_bytes = struct.unpack('<H', fat_data[offset:offset + 2])[0]
 
-        # Extraire les 12 bits corrects selon si le cluster est pair ou impair
+        # Extract the correct 12 bits depending on whether cluster is even or odd
         if cluster % 2 == 0:
-            # Cluster pair: bits 0-11
+            # Even cluster: bits 0-11
             return two_bytes & 0x0FFF
         else:
-            # Cluster impair: bits 4-15
+            # Odd cluster: bits 4-15
             return (two_bytes >> 4) & 0x0FFF
 
     def _get_fat16_entry(self, fat_data: bytes, cluster: int) -> int:
-        """Retourne la valeur d'une entrée FAT16 pour un cluster donné"""
-        # FAT16: 2 octets par entrée (16 bits)
+        """Returns the value of a FAT16 entry for a given cluster"""
+        # FAT16: 2 bytes per entry (16 bits)
         offset = cluster * 2
         if offset + 2 > len(fat_data):
             return 0
         return struct.unpack('<H', fat_data[offset:offset + 2])[0]
 
     def _get_fat32_entry(self, fat_data: bytes, cluster: int) -> int:
-        """Retourne la valeur d'une entrée FAT32 pour un cluster donné"""
-        # FAT32: 4 octets par entrée (32 bits, mais seuls les 28 bits inférieurs sont utilisés)
+        """Returns the value of a FAT32 entry for a given cluster"""
+        # FAT32: 4 bytes per entry (32 bits, but only the lower 28 bits are used)
         offset = cluster * 4
         if offset + 4 > len(fat_data):
             return 0
         value = struct.unpack('<I', fat_data[offset:offset + 4])[0]
-        # Masquer les 4 bits de poids fort (réservés)
+        # Mask the upper 4 bits (reserved)
         return value & 0x0FFFFFFF
 
     def get_fat_entry(self, fat_data: bytes, cluster: int) -> int:
-        """Retourne la valeur d'une entrée FAT pour un cluster donné (détecte automatiquement le type)"""
+        """Returns the value of a FAT entry for a given cluster (automatically detects type)"""
         if self.fat_type == 'FAT12':
             return self._get_fat12_entry(fat_data, cluster)
         elif self.fat_type == 'FAT16':
@@ -334,11 +334,11 @@ class FAT16Parser:
         elif self.fat_type == 'FAT32':
             return self._get_fat32_entry(fat_data, cluster)
         else:
-            # Par défaut, utiliser FAT16
+            # By default, use FAT16
             return self._get_fat16_entry(fat_data, cluster)
 
     def _is_eof(self, value: int) -> bool:
-        """Vérifie si une valeur FAT représente EOF (End Of File)"""
+        """Checks if a FAT value represents EOF (End Of File)"""
         if self.fat_type == 'FAT12':
             return value >= 0xFF8
         elif self.fat_type == 'FAT16':
@@ -348,7 +348,7 @@ class FAT16Parser:
         return False
 
     def _is_bad_cluster(self, value: int) -> bool:
-        """Vérifie si une valeur FAT représente un cluster défectueux"""
+        """Checks if a FAT value represents a bad cluster"""
         if self.fat_type == 'FAT12':
             return value == 0xFF7
         elif self.fat_type == 'FAT16':
@@ -358,34 +358,34 @@ class FAT16Parser:
         return False
 
     def parse_fat_chain(self, fat_data: bytes, start_cluster: int) -> List[int]:
-        """Parse une chaîne FAT à partir d'un cluster de départ (supporte FAT12/16/32)"""
+        """Parses a FAT chain from a starting cluster (supports FAT12/16/32)"""
         chain = [start_cluster]
         current = start_cluster
 
         while True:
             next_cluster = self.get_fat_entry(fat_data, current)
 
-            # Valeurs spéciales
-            if self._is_eof(next_cluster):  # Fin de chaîne (EOF)
+            # Special values
+            if self._is_eof(next_cluster):  # End of chain (EOF)
                 break
-            elif next_cluster == 0x0000:  # Cluster libre
+            elif next_cluster == 0x0000:  # Free cluster
                 break
-            elif self._is_bad_cluster(next_cluster):  # Cluster défectueux
+            elif self._is_bad_cluster(next_cluster):  # Bad cluster
                 break
-            elif next_cluster < 2:  # Réservé
+            elif next_cluster < 2:  # Reserved
                 break
 
             chain.append(next_cluster)
             current = next_cluster
 
-            # Protection contre les boucles infinies
+            # Protection against infinite loops
             if len(chain) > 10000:
-                raise ValueError("Chaîne FAT trop longue ou corrompue")
+                raise ValueError("FAT chain too long or corrupted")
 
         return chain
 
     def get_info_dict(self) -> Dict:
-        """Retourne un dictionnaire avec toutes les informations de la partition"""
+        """Returns a dictionary with all partition information"""
         if not self.boot_sector:
             return {}
 
@@ -405,44 +405,44 @@ class FAT16Parser:
             'volume_label': bs.volume_label,
             'fs_type': bs.fs_type,
             'volume_id': f"0x{bs.volume_id:08X}",
-            'detected_fat_type': self.fat_type or 'Unknown',  # Type détecté automatiquement
+            'detected_fat_type': self.fat_type or 'Unknown',  # Automatically detected type
         }
 
     def write_bytes_at_offset(self, offset: int, data: bytes):
         """
-        Écrit des octets à un offset absolu dans le fichier image
+        Writes bytes at an absolute offset in the image file
 
         Args:
-            offset: Offset absolu dans le fichier (en octets)
-            data: Données à écrire
+            offset: Absolute offset in the file (in bytes)
+            data: Data to write
 
         Raises:
-            RuntimeError: Si le fichier n'est pas ouvert
-            ValueError: Si l'offset est invalide
+            RuntimeError: If the file is not opened
+            ValueError: If the offset is invalid
         """
         if not self.file_handle:
-            raise RuntimeError("Fichier image non ouvert")
+            raise RuntimeError("Image file not opened")
 
-        # Vérifier que le fichier est ouvert en mode lecture/écriture
+        # Check that the file is opened in read/write mode
         if self.file_handle.mode == 'rb':
-            raise RuntimeError("Le fichier doit être ouvert en mode lecture/écriture (r+b)")
+            raise RuntimeError("File must be opened in read/write mode (r+b)")
 
         if offset < 0:
-            raise ValueError("L'offset ne peut pas être négatif")
+            raise ValueError("Offset cannot be negative")
 
-        # Se positionner à l'offset
+        # Position to the offset
         print(f"[FAT16Parser] Seeking to offset 0x{offset:X}")
         self.file_handle.seek(offset)
 
         current_pos = self.file_handle.tell()
         print(f"[FAT16Parser] Current position: 0x{current_pos:X}")
 
-        # Écrire les données
+        # Write the data
         print(f"[FAT16Parser] Writing {len(data)} bytes: {data.hex()}")
         bytes_written = self.file_handle.write(data)
         print(f"[FAT16Parser] Bytes written: {bytes_written}")
 
-        # Forcer l'écriture sur le disque
+        # Force write to disk
         self.file_handle.flush()
         print(f"[FAT16Parser] Flush complete")
 
@@ -450,21 +450,21 @@ class FAT16Parser:
 
     def reopen_writable(self):
         """
-        Ferme et rouvre le fichier en mode lecture/écriture
-        ATTENTION: Cette opération permet de modifier le fichier image
+        Closes and reopens the file in read/write mode
+        WARNING: This operation allows modifying the image file
         """
         if not self.file_handle:
-            raise RuntimeError("Aucun fichier n'est ouvert")
+            raise RuntimeError("No file is opened")
 
-        # Sauvegarder le chemin
+        # Save the path
         path = self.image_path
         print(f"[FAT16Parser] Reopening file: {path}")
 
-        # Fermer le fichier actuel
+        # Close the current file
         self.close()
         print(f"[FAT16Parser] File closed")
 
-        # Rouvrir en mode lecture/écriture
+        # Reopen in read/write mode
         self.file_handle = open(path, 'r+b')
         print(f"[FAT16Parser] File reopened in mode: {self.file_handle.mode}")
 
