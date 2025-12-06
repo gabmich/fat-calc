@@ -10,9 +10,10 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                               QHBoxLayout, QPushButton, QFileDialog, QLabel,
                               QSplitter, QGroupBox, QScrollArea, QTextEdit,
                               QSpinBox, QComboBox, QMessageBox, QTabWidget,
-                              QFrame, QLineEdit, QListWidget, QListWidgetItem, QCheckBox)
-from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QAction, QPainter, QColor, QPen
+                              QFrame, QLineEdit, QListWidget, QListWidgetItem, QCheckBox,
+                              QProgressDialog)
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtGui import QAction, QPainter, QColor, QPen, QPixmap
 
 from fat16_parser import FAT16Parser, MBRPartition
 from hex_viewer import HexViewer
@@ -35,12 +36,21 @@ class PartitionMapWidget(QWidget):
         self.x_offset = 10
         self.y_offset = 10
         self.empty_sectors = set()  # Cache des secteurs vides (remplis de 0x00)
+        self.map_cache = None  # Cache pixmap de la carte
+        self.cache_valid = False  # Indique si le cache est valide
+        self.last_width = 0  # Pour détecter les vrais changements de taille
+        self.last_height = 0
 
     def set_parser(self, parser: FAT16Parser):
         """Définit le parser FAT16 à visualiser"""
         self.parser = parser
         # Scanner les secteurs vides (une seule fois au chargement)
         self._scan_empty_sectors()
+        # Invalider le cache car on a un nouveau parser
+        self.cache_valid = False
+        # Initialiser last_width pour éviter un rebuild inutile
+        self.last_width = self.width()
+        self.last_height = self.height()
         self.update()
 
     def _scan_empty_sectors(self):
@@ -101,7 +111,8 @@ class PartitionMapWidget(QWidget):
             (fat_sector, QColor("#8B00FF"), f"FAT ENTRY {cluster_number}"),  # Violet pour FAT
             (data_sector, QColor("#FF0000"), f"CLUSTER {cluster_number}")     # Rouge pour données
         ]
-        self.update()
+        # Ne PAS invalider le cache - les surbrillances sont dessinées par-dessus
+        self.update()  # Juste déclencher un repaint sans invalider le cache
 
     def clear_highlight(self):
         """Efface la mise en évidence"""
@@ -111,97 +122,44 @@ class PartitionMapWidget(QWidget):
     def resizeEvent(self, event):
         """Redessine la carte lors du redimensionnement"""
         super().resizeEvent(event)
-        self.update()
+
+        # OPTIMISATION: N'invalider le cache QUE si la largeur a vraiment changé
+        # (car la hauteur est calculée automatiquement)
+        new_width = self.width()
+        new_height = self.height()
+
+        # Tolérance de 5 pixels pour éviter les invalidations inutiles
+        width_changed = abs(new_width - self.last_width) > 5
+
+        if width_changed:
+            print(f"[PARTITION MAP] resizeEvent: width changed from {self.last_width} to {new_width}, invalidating cache")
+            self.cache_valid = False
+            self.last_width = new_width
+            self.last_height = new_height
+            self.update()
+        # Sinon, pas besoin de reconstruire le cache
 
     def paintEvent(self, event):
-        """Dessine la carte de la partition"""
+        """Dessine la carte de la partition avec cache pour meilleures performances"""
+        import time
+        start = time.time()
+
         if not self.parser or not self.parser.boot_sector:
             super().paintEvent(event)
             return
 
+        # Si le cache n'est pas valide, le reconstruire
+        if not self.cache_valid:
+            t1 = time.time()
+            self._rebuild_cache()
+            print(f"[PARTITION MAP] _rebuild_cache: {(time.time()-t1)*1000:.1f}ms")
+
+        # Dessiner le cache sur le widget
         painter = QPainter(self)
-        bs = self.parser.boot_sector
+        if self.map_cache:
+            painter.drawPixmap(0, 0, self.map_cache)
 
-        # Calculer dynamiquement le nombre de carrés par ligne
-        self.squares_per_row = self.calculate_squares_per_row()
-
-        current_x = self.x_offset
-        current_y = self.y_offset
-
-        total_sectors = bs.total_sectors
-        current_sector = 0
-        square_index = 0
-
-        # Couleurs (mêmes que fat-calc)
-        colors = {
-            'boot': QColor("#FFD700"),      # Jaune
-            'reserved': QColor("#FF4444"),  # Rouge
-            'fat1': QColor("#90EE90"),      # Vert clair
-            'fat2': QColor("#006400"),      # Vert foncé
-            'root': QColor("#FFA500"),      # Orange
-            'data': QColor("#4169E1"),      # Bleu royal (données pleines)
-            'data_empty': QColor("#87CEEB") # Bleu clair (données vides)
-        }
-
-        # Effacer le mapping des positions
-        self.sector_positions.clear()
-
-        while current_sector < total_sectors:
-            # Déterminer la couleur selon la zone
-            if current_sector == 0:
-                color = colors['boot']
-            elif current_sector < bs.reserved_sectors:
-                color = colors['reserved']
-            elif current_sector < bs.reserved_sectors + bs.sectors_per_fat:
-                color = colors['fat1']
-            elif current_sector < bs.reserved_sectors + (2 * bs.sectors_per_fat):
-                color = colors['fat2']
-            elif current_sector < bs.first_data_sector:
-                color = colors['root']
-            else:
-                # Zone de données : différencier vide vs plein
-                if current_sector in self.empty_sectors:
-                    color = colors['data_empty']  # Bleu clair pour secteurs vides
-                else:
-                    color = colors['data']  # Bleu foncé pour secteurs pleins
-
-            # Stocker la position du secteur
-            self.sector_positions[current_sector] = (current_x, current_y)
-
-            # Dessiner le carré
-            painter.fillRect(
-                current_x, current_y,
-                self.square_size, self.square_size,
-                color
-            )
-
-            # Contour
-            painter.setPen(QColor("#CCCCCC"))
-            painter.drawRect(
-                current_x, current_y,
-                self.square_size, self.square_size
-            )
-
-            # Passer au carré suivant
-            current_x += self.square_size + self.spacing
-            square_index += 1
-
-            # Nouvelle ligne
-            if square_index % self.squares_per_row == 0:
-                current_x = self.x_offset
-                current_y += self.square_size + self.spacing
-
-            current_sector += 1
-
-            # Limiter le nombre de secteurs affichés pour la performance
-            if current_sector > 10000:
-                break
-
-        # Mettre à jour la hauteur minimale du widget
-        total_height = current_y + self.square_size + 60  # +60 pour la légende
-        self.setMinimumHeight(total_height)
-
-        # Dessiner les mises en évidence PAR-DESSUS la carte
+        # Dessiner les surbrillances PAR-DESSUS le cache
         for sector, highlight_color, label in self.highlighted_sectors:
             if sector in self.sector_positions:
                 hx, hy = self.sector_positions[sector]
@@ -232,6 +190,112 @@ class PartitionMapWidget(QWidget):
                 painter.setFont(painter.font())
                 painter.drawText(bg_rect, Qt.AlignmentFlag.AlignCenter, label)
 
+        painter.end()
+
+        elapsed = (time.time() - start) * 1000
+        if elapsed > 10:  # Only print if > 10ms
+            print(f"[PARTITION MAP] paintEvent TOTAL: {elapsed:.1f}ms (cache_valid={self.cache_valid})")
+
+    def _rebuild_cache(self):
+        """Reconstruit le cache pixmap de la carte (opération lourde)"""
+        bs = self.parser.boot_sector
+
+        # Calculer dynamiquement le nombre de carrés par ligne
+        self.squares_per_row = self.calculate_squares_per_row()
+
+        current_x = self.x_offset
+        current_y = self.y_offset
+
+        total_sectors = bs.total_sectors
+        current_sector = 0
+        square_index = 0
+
+        # Couleurs
+        colors = {
+            'boot': QColor("#FFD700"),      # Jaune
+            'reserved': QColor("#FF4444"),  # Rouge
+            'fat1': QColor("#90EE90"),      # Vert clair
+            'fat2': QColor("#006400"),      # Vert foncé
+            'root': QColor("#FFA500"),      # Orange
+            'data': QColor("#4169E1"),      # Bleu royal (données pleines)
+            'data_empty': QColor("#87CEEB") # Bleu clair (données vides)
+        }
+
+        # Effacer le mapping des positions
+        self.sector_positions.clear()
+
+        # Calculer la taille nécessaire du pixmap
+        # On doit d'abord calculer la hauteur finale
+        temp_y = current_y
+        temp_sector = 0
+        temp_index = 0
+        while temp_sector < total_sectors and temp_sector <= 10000:
+            if temp_index % self.squares_per_row == 0 and temp_index > 0:
+                temp_y += self.square_size + self.spacing
+            temp_sector += 1
+            temp_index += 1
+
+        total_height = temp_y + self.square_size + 60  # +60 pour la légende
+        self.setMinimumHeight(total_height)
+
+        # Créer le pixmap
+        self.map_cache = QPixmap(self.width(), total_height)
+        self.map_cache.fill(Qt.GlobalColor.white)  # Fond blanc
+
+        # Dessiner dans le pixmap
+        cache_painter = QPainter(self.map_cache)
+
+        while current_sector < total_sectors:
+            # Déterminer la couleur selon la zone
+            if current_sector == 0:
+                color = colors['boot']
+            elif current_sector < bs.reserved_sectors:
+                color = colors['reserved']
+            elif current_sector < bs.reserved_sectors + bs.sectors_per_fat:
+                color = colors['fat1']
+            elif current_sector < bs.reserved_sectors + (2 * bs.sectors_per_fat):
+                color = colors['fat2']
+            elif current_sector < bs.first_data_sector:
+                color = colors['root']
+            else:
+                # Zone de données : différencier vide vs plein
+                if current_sector in self.empty_sectors:
+                    color = colors['data_empty']  # Bleu clair pour secteurs vides
+                else:
+                    color = colors['data']  # Bleu foncé pour secteurs pleins
+
+            # Stocker la position du secteur
+            self.sector_positions[current_sector] = (current_x, current_y)
+
+            # Dessiner le carré
+            cache_painter.fillRect(
+                current_x, current_y,
+                self.square_size, self.square_size,
+                color
+            )
+
+            # Contour
+            cache_painter.setPen(QColor("#CCCCCC"))
+            cache_painter.drawRect(
+                current_x, current_y,
+                self.square_size, self.square_size
+            )
+
+            # Passer au carré suivant
+            current_x += self.square_size + self.spacing
+            square_index += 1
+
+            # Nouvelle ligne
+            if square_index % self.squares_per_row == 0:
+                current_x = self.x_offset
+                current_y += self.square_size + self.spacing
+
+            current_sector += 1
+
+            # Limiter le nombre de secteurs affichés pour la performance
+            if current_sector > 10000:
+                break
+
         # Légende
         legend_y = current_y + 20
         legend_x = self.x_offset
@@ -248,15 +312,145 @@ class PartitionMapWidget(QWidget):
 
         for label, color in legends:
             # Carré de couleur
-            painter.fillRect(legend_x, legend_y, 15, 15, color)
-            painter.setPen(QColor("#000000"))
-            painter.drawRect(legend_x, legend_y, 15, 15)
+            cache_painter.fillRect(legend_x, legend_y, 15, 15, color)
+            cache_painter.setPen(QColor("#000000"))
+            cache_painter.drawRect(legend_x, legend_y, 15, 15)
 
             # Label
-            painter.drawText(legend_x + 20, legend_y + 12, label)
-            legend_x += 110  # Augmenté pour faire de la place pour les labels plus longs
+            cache_painter.drawText(legend_x + 20, legend_y + 12, label)
+            legend_x += 110
 
-        painter.end()
+        cache_painter.end()
+
+        # Marquer le cache comme valide
+        self.cache_valid = True
+
+
+class SearchWorker(QThread):
+    """Thread worker pour effectuer la recherche textuelle en arrière-plan"""
+
+    # Signaux pour communiquer avec le thread principal
+    progress_update = pyqtSignal(int, int)  # (current, total)
+    result_found = pyqtSignal(dict)  # Émet chaque résultat trouvé
+    search_finished = pyqtSignal(int)  # Émet le nombre total de résultats
+
+    def __init__(self, parser, search_text, case_sensitive, max_results=100):
+        super().__init__()
+        self.parser = parser
+        self.search_text = search_text
+        self.case_sensitive = case_sensitive
+        self.max_results = max_results
+        self.cancelled = False
+        self.results_count = 0
+
+    def cancel(self):
+        """Annuler la recherche"""
+        self.cancelled = True
+
+    def run(self):
+        """Exécute la recherche dans un thread séparé"""
+        try:
+            bs = self.parser.boot_sector
+
+            # Encoder le texte de recherche
+            search_bytes = self.search_text.encode('utf-8')
+            if not self.case_sensitive:
+                search_bytes = search_bytes.lower()
+
+            data_start_offset = bs.first_data_sector * bs.bytes_per_sector
+            cluster_size = bs.sectors_per_cluster * bs.bytes_per_sector
+
+            # 1. Chercher dans le Root Directory
+            if not self.cancelled:
+                try:
+                    root_data = self.parser.read_root_directory()
+                    root_offset = (bs.reserved_sectors + bs.num_fats * bs.sectors_per_fat) * bs.bytes_per_sector
+
+                    search_root_data = root_data if self.case_sensitive else root_data.lower()
+                    offset = 0
+                    while True and self.results_count < self.max_results and not self.cancelled:
+                        pos = search_root_data.find(search_bytes, offset)
+                        if pos == -1:
+                            break
+
+                        absolute_offset = root_offset + pos
+                        context_start = max(0, pos - 20)
+                        context_end = min(len(root_data), pos + len(search_bytes) + 20)
+                        context = root_data[context_start:context_end]
+                        context_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in context)
+
+                        result = {
+                            'cluster': 'ROOT',
+                            'offset': absolute_offset,
+                            'position_in_cluster': pos,
+                            'match_length': len(search_bytes),
+                            'context': context_str,
+                            'root_data': root_data
+                        }
+
+                        self.result_found.emit(result)
+                        self.results_count += 1
+                        offset = pos + 1
+
+                except Exception as e:
+                    print(f"Erreur lors de la recherche dans le Root Directory: {e}")
+
+            # 2. Parcourir tous les clusters
+            total_clusters = bs.total_clusters
+            for cluster_num in range(2, total_clusters + 2):
+                if self.cancelled or self.results_count >= self.max_results:
+                    break
+
+                # Émettre la progression tous les 50 clusters
+                if (cluster_num - 2) % 50 == 0:
+                    self.progress_update.emit(cluster_num - 2, total_clusters)
+
+                try:
+                    cluster_data = self.parser.read_cluster(cluster_num)
+                    search_data = cluster_data if self.case_sensitive else cluster_data.lower()
+
+                    offset = 0
+                    while True:
+                        pos = search_data.find(search_bytes, offset)
+                        if pos == -1:
+                            break
+
+                        cluster_offset = (cluster_num - 2) * cluster_size
+                        absolute_offset = data_start_offset + cluster_offset + pos
+
+                        context_start = max(0, pos - 20)
+                        context_end = min(len(cluster_data), pos + len(search_bytes) + 20)
+                        context = cluster_data[context_start:context_end]
+                        context_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in context)
+
+                        result = {
+                            'cluster': cluster_num,
+                            'offset': absolute_offset,
+                            'position_in_cluster': pos,
+                            'match_length': len(search_bytes),
+                            'context': context_str
+                        }
+
+                        self.result_found.emit(result)
+                        self.results_count += 1
+
+                        if self.results_count >= self.max_results:
+                            break
+
+                        offset = pos + 1
+
+                except Exception:
+                    continue
+
+            # Émettre la progression finale
+            self.progress_update.emit(total_clusters, total_clusters)
+
+        except Exception as e:
+            print(f"Erreur dans le thread de recherche: {e}")
+
+        finally:
+            # Toujours émettre le signal de fin
+            self.search_finished.emit(self.results_count)
 
 
 class FATSimulatorGUI(QMainWindow):
@@ -267,6 +461,9 @@ class FATSimulatorGUI(QMainWindow):
         self.parser: Optional[FAT16Parser] = None
         self.fat_data: bytes = b''
         self.current_cluster: int = 2
+        self.search_worker = None
+        self.search_progress_dialog = None
+        self.search_results = []
         self.setup_ui()
 
     def setup_ui(self):
@@ -793,8 +990,14 @@ class FATSimulatorGUI(QMainWindow):
             QMessageBox.warning(self, "Erreur", "Veuillez entrer un texte à rechercher")
             return
 
+        # Si une recherche est déjà en cours, l'annuler
+        if self.search_worker and self.search_worker.isRunning():
+            self.search_worker.cancel()
+            self.search_worker.wait()
+
         # Effacer les résultats précédents
         self.text_search_results.clear()
+        self.search_results = []
 
         # Vider le champ de recherche de cluster et son résultat
         self.search_cluster_input.clear()
@@ -802,122 +1005,95 @@ class FATSimulatorGUI(QMainWindow):
         self.search_result_label.setStyleSheet("QLineEdit { color: #666; font-size: 9pt; background-color: transparent; border: none; }")
 
         try:
-            bs = self.parser.boot_sector
             case_sensitive = self.case_sensitive_checkbox.isChecked()
+            max_results = 100
 
-            # Encoder le texte de recherche
-            search_bytes = search_text.encode('utf-8')
-            if not case_sensitive:
-                search_bytes = search_bytes.lower()
+            # Créer le worker thread
+            self.search_worker = SearchWorker(self.parser, search_text, case_sensitive, max_results)
 
-            # Lire toute la zone de données
-            data_start_offset = bs.first_data_sector * bs.bytes_per_sector
-            cluster_size = bs.sectors_per_cluster * bs.bytes_per_sector
+            # Connecter les signaux
+            self.search_worker.progress_update.connect(self.on_search_progress)
+            self.search_worker.result_found.connect(self.on_search_result_found)
+            self.search_worker.search_finished.connect(self.on_search_finished)
 
-            # Rechercher dans les clusters
-            results = []
-            max_results = 100  # Limiter à 100 résultats
+            # Créer et afficher la boîte de dialogue de progression
+            total_clusters = self.parser.boot_sector.total_clusters
+            self.search_progress_dialog = QProgressDialog(
+                "Recherche en cours...",
+                "Annuler",
+                0,
+                total_clusters,
+                self
+            )
+            self.search_progress_dialog.setWindowTitle("Recherche textuelle")
+            self.search_progress_dialog.setWindowModality(Qt.WindowModality.WindowModal)
+            self.search_progress_dialog.canceled.connect(self.on_search_cancelled)
+            self.search_progress_dialog.setMinimumDuration(0)  # Afficher immédiatement
+            self.search_progress_dialog.setValue(0)
 
-            # 1. D'abord chercher dans le Root Directory (où sont les noms de fichiers)
-            try:
-                root_data = self.parser.read_root_directory()
-                root_offset = (bs.reserved_sectors + bs.num_fats * bs.sectors_per_fat) * bs.bytes_per_sector
-
-                search_root_data = root_data if case_sensitive else root_data.lower()
-                offset = 0
-                while True and len(results) < max_results:
-                    pos = search_root_data.find(search_bytes, offset)
-                    if pos == -1:
-                        break
-
-                    absolute_offset = root_offset + pos
-                    context_start = max(0, pos - 20)
-                    context_end = min(len(root_data), pos + len(search_bytes) + 20)
-                    context = root_data[context_start:context_end]
-                    context_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in context)
-
-                    results.append({
-                        'cluster': 'ROOT',  # Marquer comme étant dans le Root Directory
-                        'offset': absolute_offset,
-                        'position_in_cluster': pos,
-                        'match_length': len(search_bytes),
-                        'context': context_str,
-                        'root_data': root_data  # Stocker les données du root pour affichage
-                    })
-
-                    offset = pos + 1
-            except Exception as e:
-                print(f"Erreur lors de la recherche dans le Root Directory: {e}")
-
-            # 2. Parcourir tous les clusters de données
-            total_clusters = bs.total_clusters
-            for cluster_num in range(2, total_clusters + 2):
-                if len(results) >= max_results:
-                    break
-
-                try:
-                    # Lire le cluster
-                    cluster_data = self.parser.read_cluster(cluster_num)
-
-                    # Pour recherche insensible à la casse, convertir en minuscules
-                    search_data = cluster_data if case_sensitive else cluster_data.lower()
-
-                    # Rechercher le texte dans ce cluster
-                    offset = 0
-                    while True:
-                        pos = search_data.find(search_bytes, offset)
-                        if pos == -1:
-                            break
-
-                        # Calculer l'offset absolu
-                        cluster_offset = (cluster_num - 2) * cluster_size
-                        absolute_offset = data_start_offset + cluster_offset + pos
-
-                        # Extraire un contexte autour de la correspondance
-                        context_start = max(0, pos - 20)
-                        context_end = min(len(cluster_data), pos + len(search_bytes) + 20)
-                        context = cluster_data[context_start:context_end]
-
-                        # Convertir en texte lisible (remplacer les non-imprimables)
-                        context_str = ''.join(chr(b) if 32 <= b < 127 else '.' for b in context)
-
-                        results.append({
-                            'cluster': cluster_num,
-                            'offset': absolute_offset,
-                            'position_in_cluster': pos,
-                            'match_length': len(search_bytes),
-                            'context': context_str
-                        })
-
-                        if len(results) >= max_results:
-                            break
-
-                        offset = pos + 1
-
-                except Exception as e:
-                    # Ignorer les erreurs de lecture de cluster
-                    continue
-
-            # Afficher les résultats
-            if results:
-                for result in results:
-                    item_text = f"Cluster {result['cluster']} @ 0x{result['offset']:08X} ({result['offset']}) - ...{result['context']}..."
-                    item = QListWidgetItem(item_text)
-                    item.setData(Qt.ItemDataRole.UserRole, result)
-                    self.text_search_results.addItem(item)
-
-                self.text_search_results.setCurrentRow(0)
-                QMessageBox.information(
-                    self,
-                    "Recherche terminée",
-                    f"✅ {len(results)} occurrence(s) trouvée(s)" +
-                    (f"\n(Limité aux {max_results} premières)" if len(results) >= max_results else "")
-                )
-            else:
-                QMessageBox.information(self, "Recherche terminée", "❌ Aucune occurrence trouvée")
+            # Démarrer la recherche
+            self.search_worker.start()
 
         except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Erreur lors de la recherche:\n{str(e)}")
+            QMessageBox.critical(self, "Erreur", f"Erreur lors du démarrage de la recherche:\n{str(e)}")
+
+    def on_search_progress(self, current, total):
+        """Mise à jour de la progression de la recherche"""
+        if self.search_progress_dialog and not self.search_progress_dialog.wasCanceled():
+            try:
+                self.search_progress_dialog.setValue(current)
+                self.search_progress_dialog.setLabelText(f"Recherche en cours... ({current}/{total} clusters)")
+            except (AttributeError, RuntimeError):
+                # La boîte de dialogue a été fermée, ignorer
+                pass
+
+    def on_search_result_found(self, result):
+        """Callback quand un résultat est trouvé"""
+        self.search_results.append(result)
+        item_text = f"Cluster {result['cluster']} @ 0x{result['offset']:08X} ({result['offset']}) - ...{result['context']}..."
+        item = QListWidgetItem(item_text)
+        item.setData(Qt.ItemDataRole.UserRole, result)
+        self.text_search_results.addItem(item)
+
+    def on_search_finished(self, results_count):
+        """Callback quand la recherche est terminée"""
+        # Déconnecter les signaux pour éviter les mises à jour tardives
+        if self.search_worker:
+            try:
+                self.search_worker.progress_update.disconnect()
+                self.search_worker.result_found.disconnect()
+                self.search_worker.search_finished.disconnect()
+            except (TypeError, RuntimeError):
+                # Signaux déjà déconnectés, ignorer
+                pass
+
+        # Fermer la boîte de dialogue de progression
+        if self.search_progress_dialog:
+            try:
+                self.search_progress_dialog.close()
+            except (AttributeError, RuntimeError):
+                pass
+            self.search_progress_dialog = None
+
+        # Sélectionner le premier résultat si disponible
+        if results_count > 0:
+            self.text_search_results.setCurrentRow(0)
+            max_results = 100
+            QMessageBox.information(
+                self,
+                "Recherche terminée",
+                f"✅ {results_count} occurrence(s) trouvée(s)" +
+                (f"\n(Limité aux {max_results} premières)" if results_count >= max_results else "")
+            )
+        else:
+            QMessageBox.information(self, "Recherche terminée", "❌ Aucune occurrence trouvée")
+
+    def on_search_cancelled(self):
+        """Callback quand l'utilisateur annule la recherche"""
+        if self.search_worker:
+            self.search_worker.cancel()
+            # Attendre que le thread se termine proprement
+            self.search_worker.wait()
 
     def on_text_search_result_changed(self, current_item, previous_item):
         """Callback quand la sélection d'un résultat change (clic ou navigation clavier)"""
@@ -933,10 +1109,15 @@ class FATSimulatorGUI(QMainWindow):
         if not result:
             return
 
+        import time
+        start_time = time.time()
+
         try:
             bs = self.parser.boot_sector
             cluster_num = result['cluster']
             absolute_offset = result['offset']
+
+            print(f"\n[PERF] Clic sur résultat - Cluster {cluster_num}")
 
             # Cas spécial : résultat dans le Root Directory
             if cluster_num == 'ROOT':
@@ -968,21 +1149,33 @@ class FATSimulatorGUI(QMainWindow):
             else:
                 # Cas normal : résultat dans un cluster de données
                 # 1. Charger la chaîne FAT pour ce cluster
+                t1 = time.time()
                 chain = self.parser.parse_fat_chain(self.fat_data, cluster_num)
                 self.chain_editor.set_chain(chain)
+                print(f"[PERF]   parse_fat_chain + set_chain: {(time.time()-t1)*1000:.1f}ms")
 
                 # 2. Lire et afficher le contenu du cluster dans le hex viewer
+                t2 = time.time()
                 cluster_data = self.parser.read_cluster(cluster_num)
+                print(f"[PERF]   read_cluster: {(time.time()-t2)*1000:.1f}ms")
+
                 cluster_offset = bs.first_data_sector * bs.bytes_per_sector + (cluster_num - 2) * bs.sectors_per_cluster * bs.bytes_per_sector
 
+                t3 = time.time()
                 self.chain_hex_viewer.set_title(f"Cluster {cluster_num} (Offset: 0x{cluster_offset:X}) - Résultat de recherche")
+                print(f"[PERF]   set_title: {(time.time()-t3)*1000:.1f}ms")
+
+                t4 = time.time()
                 self.chain_hex_viewer.set_data(cluster_data, cluster_offset)
+                print(f"[PERF]   set_data (HEX VIEWER): {(time.time()-t4)*1000:.1f}ms")
 
                 # 2b. Mettre en évidence le texte trouvé dans le hex viewer
                 position_in_cluster = result['position_in_cluster']
                 match_length = result.get('match_length', 0)
                 if match_length > 0:
+                    t5 = time.time()
                     self.chain_hex_viewer.highlight_range(position_in_cluster, match_length)
+                    print(f"[PERF]   highlight_range: {(time.time()-t5)*1000:.1f}ms")
 
                 # 3. Calculer les secteurs pour la mise en évidence
                 fat_entry_offset = bs.reserved_sectors * bs.bytes_per_sector + (cluster_num * 2)
@@ -990,18 +1183,27 @@ class FATSimulatorGUI(QMainWindow):
                 data_sector = bs.first_data_sector + (cluster_num - 2) * bs.sectors_per_cluster
 
                 # 4. Mettre en évidence dans la cartographie
+                t6 = time.time()
                 self.partition_map.highlight_positions(fat_sector, data_sector, cluster_num)
+                print(f"[PERF]   partition_map.highlight_positions: {(time.time()-t6)*1000:.1f}ms")
 
                 # 5. Scroller jusqu'au cluster dans la carte
                 if data_sector in self.partition_map.sector_positions:
+                    t7 = time.time()
                     hx, hy = self.partition_map.sector_positions[data_sector]
                     self.map_scroll_area.ensureVisible(hx, hy, 100, 100)
+                    print(f"[PERF]   ensureVisible: {(time.time()-t7)*1000:.1f}ms")
 
                 # 6. Afficher le résultat dans l'éditeur de chaîne
+                t8 = time.time()
                 result_msg = f"✅ Cluster {cluster_num} | Offset: {absolute_offset} (0x{absolute_offset:X}) | Position dans cluster: {result['position_in_cluster']}"
                 self.chain_editor.set_search_result(result_msg)
+                print(f"[PERF]   set_search_result: {(time.time()-t8)*1000:.1f}ms")
+
+            print(f"[PERF] TOTAL: {(time.time()-start_time)*1000:.1f}ms\n")
 
         except Exception as e:
+            print(f"[PERF] ERREUR après {(time.time()-start_time)*1000:.1f}ms: {e}")
             QMessageBox.critical(self, "Erreur", f"Erreur lors de l'affichage du résultat:\n{str(e)}")
 
     def enable_controls(self, enabled: bool):

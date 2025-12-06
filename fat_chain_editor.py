@@ -198,6 +198,9 @@ class FATChainEditor(QWidget):
 
     def refresh_display(self):
         """Refreshes the chain display"""
+        import time
+        start = time.time()
+
         # Clear ALL child widgets from the layout
         while self.chain_layout.count():
             item = self.chain_layout.takeAt(0)
@@ -220,9 +223,14 @@ class FATChainEditor(QWidget):
             self.info_label.setText("Empty chain")
             return
 
+        # OPTIMISATION: Limiter le nombre de widgets affichés pour les longues chaînes
+        max_displayed_clusters = 50  # Limiter à 50 pour la performance
+        clusters_to_display = self.chain[:max_displayed_clusters]
+        remaining_count = len(self.chain) - max_displayed_clusters
+
         # Create widgets for each cluster
-        for i, cluster in enumerate(self.chain):
-            # Check if it's the last cluster
+        for i, cluster in enumerate(clusters_to_display):
+            # Check if it's the last cluster in the FULL chain
             is_last = (i == len(self.chain) - 1)
 
             # Cluster block
@@ -233,12 +241,23 @@ class FATChainEditor(QWidget):
             self.cluster_blocks.append(block)
             self.chain_layout.addWidget(block)
 
-            # Add an arrow between clusters (except after the last one)
-            if i < len(self.chain) - 1:
+            # Add an arrow between clusters (except after the last displayed one)
+            if i < len(clusters_to_display) - 1:
                 arrow = QLabel("→")
                 arrow.setStyleSheet("font-size: 20pt; color: #495057; padding: 0 5px;")
                 arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.chain_layout.addWidget(arrow)
+
+        # If there are more clusters not displayed, add a "..." indicator
+        if remaining_count > 0:
+            arrow = QLabel("→")
+            arrow.setStyleSheet("font-size: 20pt; color: #495057; padding: 0 5px;")
+            self.chain_layout.addWidget(arrow)
+
+            more_label = QLabel(f"... +{remaining_count} more clusters")
+            more_label.setStyleSheet("padding: 10px; color: #666; font-style: italic; background-color: #f0f0f0; border-radius: 5px;")
+            more_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.chain_layout.addWidget(more_label)
 
         # Add a stretch at the end
         self.chain_layout.addStretch()
@@ -249,6 +268,10 @@ class FATChainEditor(QWidget):
         if len(self.chain) > 10:
             cluster_list += f", ... ({len(self.chain) - 10} more)"
         self.info_label.setText(f"Chain: {total_size} cluster(s) | Clusters: {cluster_list}")
+
+        elapsed = (time.time() - start) * 1000
+        if elapsed > 5:  # Only print if > 5ms
+            print(f"[CHAIN EDITOR] refresh_display: {elapsed:.1f}ms for {len(self.chain)} clusters")
 
     def _on_cluster_clicked(self, cluster_number: int):
         """Callback when a cluster is clicked"""

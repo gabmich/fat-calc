@@ -233,6 +233,9 @@ class HexViewer(QWidget):
 
     def _set_data_html(self, data: bytes, offset: int):
         """Affiche les données en HTML (mode lecture)"""
+        import time
+        start = time.time()
+
         html_lines = []
         html_lines.append('<pre style="font-family: Courier New; font-size: 9pt;">')
 
@@ -318,7 +321,15 @@ class HexViewer(QWidget):
 
         html_lines.append('</pre>')
         html = '\n'.join(html_lines)
+
+        t_build = time.time()
+        print(f"[HEX VIEWER] HTML build: {(t_build-start)*1000:.1f}ms, size: {len(html)} chars")
+
         self.text_edit.setHtml(html)
+
+        t_render = time.time()
+        print(f"[HEX VIEWER] setHtml() call: {(t_render-t_build)*1000:.1f}ms")
+        print(f"[HEX VIEWER] TOTAL _set_data_html: {(t_render-start)*1000:.1f}ms")
 
     def _set_data_editable(self, data: bytes, offset: int):
         """Affiche les données en texte simple (mode édition)"""
@@ -399,17 +410,28 @@ class HexViewer(QWidget):
             length: Nombre d'octets à mettre en évidence
             scroll_to: Si True, scrolle automatiquement vers la zone mise en évidence
         """
+        import time
+        t_start = time.time()
+
         self.highlight_ranges = [(start, length)]
-        # Rafraîchir l'affichage si des données sont présentes
+
+        # OPTIMISATION: Ne régénérer le HTML que si les ranges ont changé
+        # Pour l'instant, on régénère toujours mais on mesure le temps
         if self.data:
+            t1 = time.time()
             self.set_data(self.data, self.current_offset)
+            print(f"[HEX VIEWER] highlight_range->set_data: {(time.time()-t1)*1000:.1f}ms")
 
             # Si en mode édition, appliquer le highlighting avec QTextCharFormat
             if self.edit_mode:
                 self._apply_edit_mode_highlighting()
 
             if scroll_to:
+                t2 = time.time()
                 self.scroll_to_position(start)
+                print(f"[HEX VIEWER] scroll_to_position: {(time.time()-t2)*1000:.1f}ms")
+
+        print(f"[HEX VIEWER] highlight_range TOTAL: {(time.time()-t_start)*1000:.1f}ms")
 
     def _apply_edit_mode_highlighting(self):
         """Applique le highlighting en mode édition en utilisant QTextCharFormat"""
